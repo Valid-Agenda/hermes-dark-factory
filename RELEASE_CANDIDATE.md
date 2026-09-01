@@ -4,7 +4,7 @@ This repository is a technical release candidate for Hermes Dark Factory v0.3.0.
 
 ## Verified on the candidate tree
 
-- `python3 -m unittest discover -s tests -v` — 213 tests passed.
+- `python3 -m unittest discover -s tests -v` — 213 tests passed after installing `requirements-dev.txt`.
 - Python compilation and dashboard/desktop JavaScript syntax checks passed.
 - All repository JSON fixtures parsed successfully.
 - `hermes plugins doctor ./plugin --ci` passed with 9 tools and 1 hook.
@@ -12,6 +12,10 @@ This repository is a technical release candidate for Hermes Dark Factory v0.3.0.
 - The installed dashboard setup/model-options HTTP smoke passed without credential fields.
 - A real loopback browser smoke rendered `/dark-factory`, navigated the setup steps, saved a draft, and reported no console errors.
 - The public tree contains no non-test machine paths, private session links, credential URLs, bearer tokens, or private-key material.
+
+The dashboard bundle is intentionally vendored under `plugin/dashboard/dist/`; this repository validates its syntax but does not contain the upstream dashboard build source or lockfile. Hermes supplies the desktop host SDK/React runtime.
+
+The repository does not currently run a real Beads CLI smoke in CI because the optional `bd` executable is not bundled; exercise Beads CLI v1.2.2 separately before enabling graph writes. The browser smoke requires a Hermes dashboard host and is intentionally not run on the dependency-only CI job.
 
 ## Before public distribution
 

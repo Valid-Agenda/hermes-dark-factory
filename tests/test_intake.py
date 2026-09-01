@@ -20,6 +20,7 @@ from plugin.intake import (
     validate_intake,
 )
 from plugin.model_policy import DEFAULT_PRESET_ID
+from hermes_test_stubs import ensure_inventory_module
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -985,6 +986,7 @@ class IntakeCompilationTests(unittest.TestCase):
 class DashboardModelOptionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        ensure_inventory_module()
         api_path = ROOT / "plugin" / "dashboard" / "plugin_api.py"
         spec = importlib.util.spec_from_file_location("dark_factory_dashboard_api", api_path)
         assert spec and spec.loader

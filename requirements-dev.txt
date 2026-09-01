@@ -1,0 +1,5 @@
+# Dependencies required to run the repository test and dashboard-contract suite.
+# Hermes itself supplies the host runtime; these pins make a clean checkout reproducible.
+fastapi==0.133.1
+httpx==0.28.1
+PyYAML==6.0.3

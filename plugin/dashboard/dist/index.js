@@ -797,7 +797,7 @@
           label: "Workspace path",
           required: true,
           value: props.setup.workspace_path,
-          placeholder: "/home/user/dev/product",
+          placeholder: "/path/to/product",
           help: "The compiled manifest is written under this workspace. Use a local path; no repository is created from this screen.",
           onChange: function (value) { props.update(["workspace_path"], value); }
         })

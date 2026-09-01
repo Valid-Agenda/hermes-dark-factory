@@ -27,6 +27,7 @@ from plugin import (
     register,
 )
 from plugin.engine import transition
+from hermes_test_stubs import ensure_inventory_module
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = json.loads((ROOT / "templates" / "manifest.example.json").read_text(encoding="utf-8"))
@@ -48,6 +49,7 @@ def fixture_catalog(manifest: dict | None = None) -> dict:
 
 class RuntimeModelInventoryTests(unittest.TestCase):
     def setUp(self) -> None:
+        ensure_inventory_module()
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
@@ -1697,7 +1699,7 @@ class DashboardInventoryErrorTests(unittest.TestCase):
         from plugin.dashboard import plugin_api
 
         credential_error = RuntimeError(
-            "inventory loader exploded at /home/master/.hermes/config.yaml: "
+            "inventory loader exploded at /var/lib/hermes/config.yaml: "
             "Authorization: Bearer sk-dashboard-do-not-leak password=dashboard-secret"
         )
         calls = (

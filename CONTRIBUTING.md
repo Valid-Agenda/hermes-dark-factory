@@ -4,12 +4,19 @@ Thanks for helping improve Hermes Dark Factory. The project is a bounded control
 
 ## Development setup
 
-Use Python 3.11 or newer and a Hermes Agent environment with native plugin support. Beads integration tests that require the external CLI are optional; when exercised, use Beads CLI v1.2.2 in an isolated temporary directory.
+Use Python 3.11 or newer. For a clean checkout, install the pinned repository dependencies first:
+
+```bash
+python3 -m pip install -r requirements-dev.txt
+```
+
+Hermes Agent supplies the host runtime and native plugin APIs. Beads integration tests that require the external CLI are optional; when exercised, use Beads CLI v1.2.2 in an isolated temporary directory.
 
 Run the local gates from the repository root:
 
 ```bash
 python3 -m unittest discover -s tests -v
+python3 scripts/public_release_scan.py
 python3 -m compileall -q plugin tests scripts
 node --check plugin/dashboard/dist/index.js
 node --check plugin/desktop/plugin.js
@@ -28,6 +35,7 @@ A successful test run must discover a nonzero number of tests and finish with `O
 - Keep reviewer-role write restrictions and the one-remediation circuit breaker intact.
 - For stateful changes, add subprocess or persistence coverage for missing, corrupt, mismatched, replayed, and progressed state.
 - For dashboard or desktop changes, exercise the real browser-visible interaction and check the browser console; syntax/build success alone is not sufficient.
+- Run `python3 scripts/public_release_scan.py` before submitting. It reports only pattern classes and fails on non-test matches.
 - Keep test fixtures portable. Do not add personal filesystem paths, session links, internal task IDs, credentials, or private product artifacts.
 
 ## Pull requests

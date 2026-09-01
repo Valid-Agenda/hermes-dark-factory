@@ -5,9 +5,11 @@ __pycache__/
 htmlcov/
 .venv/
 venv/
+.hermes/factory/manifest.json
 .hermes/factory/state.json
 .hermes/factory/beads-graph-receipt.json
 .hermes/.factory.state.lock
+/plugin-data/
 
 # Local build, coverage, and editor artifacts
 .mypy_cache/

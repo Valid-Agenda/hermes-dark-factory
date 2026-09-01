@@ -43,9 +43,10 @@ tests/                              # Unit, API, contract, security, and scenari
 - Hermes Agent with native plugin support.
 - Python 3.11 or newer for the CLI and test suite.
 - Node.js 18 or newer only for dashboard/desktop syntax checks.
+- For a clean checkout, install the pinned test/API dependencies with `python3 -m pip install -r requirements-dev.txt`.
 - Optional: Beads CLI **v1.2.2** for the Beads graph backend. The adapter does not initialize or mutate a Beads store during preflight.
 
-Python dependencies used by the dashboard/API are supplied by the Hermes environment. The plugin installer does not silently install arbitrary Python packages.
+The plugin host supplies Hermes runtime modules. The repository does not silently install host packages during plugin installation.
 
 ## Install from a public Git repository
 
@@ -143,6 +144,7 @@ Run the canonical test discovery command from the repository root:
 
 ```bash
 python3 -m unittest discover -s tests -v
+python3 scripts/public_release_scan.py
 python3 -m compileall -q plugin tests scripts
 node --check plugin/dashboard/dist/index.js
 node --check plugin/desktop/plugin.js
