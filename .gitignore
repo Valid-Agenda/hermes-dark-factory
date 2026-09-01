@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+.hermes/factory/state.json
+.hermes/factory/beads-graph-receipt.json
+.hermes/.factory.state.lock
+
+# Local build, coverage, and editor artifacts
+.mypy_cache/
+.ruff_cache/
+coverage.xml
+/build/
+/dist/
+*.egg-info/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,20 @@
+manifest_version: 2
+api_version: 1
+name: dark-factory
+version: "0.3.0"
+description: "Guided, milestone-controlled autonomous software delivery for Hermes with Sol/Luna execution policy, a safe Beads graph adapter, fail-closed intake, deterministic evidence gates, and independent review."
+author: "Hermes Agent"
+provides_tools:
+  - factory_preflight
+  - factory_compile
+  - factory_validate
+  - factory_next
+  - factory_transition
+  - factory_attest_review
+  - factory_lint_card
+  - factory_beads_plan
+  - factory_beads_apply
+provides_hooks:
+  - pre_tool_call
+skills:
+  - skills/dark-factory/SKILL.md

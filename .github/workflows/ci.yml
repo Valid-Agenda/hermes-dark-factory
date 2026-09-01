@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python-tests:
+    name: Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.11', '3.12', '3.13']
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Run unit and contract tests
+        run: python -m unittest discover -s tests -v
+      - name: Compile Python sources
+        run: python -m compileall -q plugin tests scripts
+      - name: Validate JSON fixtures and manifests
+        run: >-
+          python -c "import json; from pathlib import Path; [json.loads(p.read_text(encoding='utf-8')) for p in Path('.').rglob('*.json') if '.git' not in p.parts]"
+
+  javascript-syntax:
+    name: Dashboard and desktop syntax
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check distributable JavaScript
+        run: |
+          node --check plugin/dashboard/dist/index.js
+          node --check plugin/desktop/plugin.js

@@ -1,0 +1,499 @@
+{
+  "schema_version": 2,
+  "mission": {
+    "id": "sba-hosted-mvp-representative",
+    "outcome": "A verified founder moves from a safe public URL preview to an accepted durable draft without agent publication",
+    "name": "Sba Hosted Mvp Representative",
+    "problem": "Users need a dependable way to complete the Sba Hosted Mvp Representative workflow without unsafe or confusing failures",
+    "context": "This mission exercises the existing Sba Hosted Mvp Representative product architecture while preserving current project conventions and evidence requirements",
+    "project_mode": "existing",
+    "workspace_path": "/path/to/sites-by-agents",
+    "out_of_scope": [
+      "production deployment"
+    ],
+    "constraints": [
+      "Preserve existing architecture and public contracts unless an explicit authority decision permits change"
+    ],
+    "success_metrics": [
+      "Every declared milestone acceptance scenario passes against the exact integrated candidate SHA"
+    ],
+    "surfaces": [
+      "web ui"
+    ],
+    "personas": [
+      {
+        "id": "primary-user",
+        "name": "Primary user",
+        "context": "Works in the product under realistic permissions and normal operating constraints",
+        "need": "Complete the core journey reliably without data leakage or ambiguous recovery"
+      }
+    ],
+    "user_stories": [
+      {
+        "id": "US-1",
+        "persona_id": "primary-user",
+        "want": "use the delivered capability safely",
+        "so_that": "Supabase verification creates one tenant-scoped founder session that cannot be forged in browser state",
+        "acceptance": [
+          {
+            "id": "SBA-M1-S1-A1",
+            "type": "happy",
+            "statement": "Verified founder bootstrap succeeds once and is audit logged"
+          },
+          {
+            "id": "SBA-M1-S1-A2",
+            "type": "happy",
+            "statement": "Forged cookie, JSON, header, and query entitlement attempts are denied"
+          },
+          {
+            "id": "SBA-M1-S1-US-NEG",
+            "type": "negative",
+            "statement": "Unauthorized or invalid use is rejected without leaking protected state or corrupting durable data"
+          }
+        ],
+        "paths": [
+          "api/auth/**",
+          "packages/domain/identity/**",
+          "tests/auth/**"
+        ]
+      },
+      {
+        "id": "US-2",
+        "persona_id": "primary-user",
+        "want": "use the delivered capability safely",
+        "so_that": "The bounded fetch gateway admits one safe public homepage and rejects private or oversized targets",
+        "acceptance": [
+          {
+            "id": "SBA-M1-S2-A1",
+            "type": "happy",
+            "statement": "Connect-time address checks and redirect checks reject private targets"
+          },
+          {
+            "id": "SBA-M1-S2-A2",
+            "type": "happy",
+            "statement": "Body, time, redirect, and acquisition cost caps are enforced"
+          },
+          {
+            "id": "SBA-M1-S2-US-NEG",
+            "type": "negative",
+            "statement": "Unauthorized or invalid use is rejected without leaking protected state or corrupting durable data"
+          }
+        ],
+        "paths": [
+          "api/intake/**",
+          "packages/domain/acquisition/**",
+          "tests/intake/**"
+        ]
+      },
+      {
+        "id": "US-3",
+        "persona_id": "primary-user",
+        "want": "use the delivered capability safely",
+        "so_that": "The tenant-scoped Studio creates, compares, and accepts schema-valid drafts without a publish route",
+        "acceptance": [
+          {
+            "id": "SBA-M2-S1-A1",
+            "type": "happy",
+            "statement": "Direct edit produces and accepts an immutable draft revision"
+          },
+          {
+            "id": "SBA-M2-S1-A2",
+            "type": "happy",
+            "statement": "Cross-tenant and agent-publish attempts are denied"
+          },
+          {
+            "id": "SBA-M2-S1-US-NEG",
+            "type": "negative",
+            "statement": "Unauthorized or invalid use is rejected without leaking protected state or corrupting durable data"
+          }
+        ],
+        "paths": [
+          "apps/studio/**",
+          "packages/domain/revisions/**",
+          "tests/studio/**"
+        ]
+      }
+    ]
+  },
+  "policy": {
+    "max_active_milestones": 1,
+    "max_parallel_slices": 2,
+    "repeated_failure_limit": 2,
+    "max_remediation_cycles": 1
+  },
+  "decisions": [
+    {
+      "id": "SBA-D1",
+      "statement": "Supabase identity and server-owned entitlement are the only founder authority",
+      "status": "locked"
+    },
+    {
+      "id": "SBA-D2",
+      "statement": "The bounded connect-time fetch gateway is the only public URL intake path",
+      "status": "locked"
+    }
+  ],
+  "milestones": [
+    {
+      "id": "SBA-M1",
+      "outcome": "A verified founder securely enters a tenant-scoped hosted spine and creates one bounded public-site preview",
+      "depends_on": [],
+      "slices": [
+        "SBA-M1-S1",
+        "SBA-M1-S2"
+      ],
+      "acceptance": [
+        {
+          "id": "SBA-M1-A1",
+          "type": "happy",
+          "statement": "Verified founder bootstrap produces one tenant and site with immutable audit state"
+        },
+        {
+          "id": "SBA-M1-A2",
+          "type": "negative",
+          "statement": "A safe public URL creates a bounded read-only preview and SSRF negatives fail closed"
+        },
+        {
+          "id": "SBA-M1-S1-A1",
+          "type": "happy",
+          "statement": "Verified founder bootstrap succeeds once and is audit logged"
+        },
+        {
+          "id": "SBA-M1-S1-A2",
+          "type": "happy",
+          "statement": "Forged cookie, JSON, header, and query entitlement attempts are denied"
+        },
+        {
+          "id": "SBA-M1-S1-US-NEG",
+          "type": "negative",
+          "statement": "Unauthorized or invalid use is rejected without leaking protected state or corrupting durable data"
+        },
+        {
+          "id": "SBA-M1-S2-A1",
+          "type": "happy",
+          "statement": "Connect-time address checks and redirect checks reject private targets"
+        },
+        {
+          "id": "SBA-M1-S2-A2",
+          "type": "happy",
+          "statement": "Body, time, redirect, and acquisition cost caps are enforced"
+        },
+        {
+          "id": "SBA-M1-S2-US-NEG",
+          "type": "negative",
+          "statement": "Unauthorized or invalid use is rejected without leaking protected state or corrupting durable data"
+        }
+      ],
+      "story_ids": [
+        "US-1",
+        "US-2"
+      ]
+    },
+    {
+      "id": "SBA-M2",
+      "outcome": "The founder directly edits and accepts a schema-valid draft while every agent action remains draft-only",
+      "depends_on": [
+        "SBA-M1"
+      ],
+      "slices": [
+        "SBA-M2-S1"
+      ],
+      "acceptance": [
+        {
+          "id": "SBA-M2-A1",
+          "type": "happy",
+          "statement": "Direct edit, compare, and accept persists an immutable tenant-scoped draft"
+        },
+        {
+          "id": "SBA-M2-A2",
+          "type": "negative",
+          "statement": "Agent output cannot move the public release pointer"
+        },
+        {
+          "id": "SBA-M2-S1-A1",
+          "type": "happy",
+          "statement": "Direct edit produces and accepts an immutable draft revision"
+        },
+        {
+          "id": "SBA-M2-S1-A2",
+          "type": "happy",
+          "statement": "Cross-tenant and agent-publish attempts are denied"
+        },
+        {
+          "id": "SBA-M2-S1-US-NEG",
+          "type": "negative",
+          "statement": "Unauthorized or invalid use is rejected without leaking protected state or corrupting durable data"
+        }
+      ],
+      "story_ids": [
+        "US-3"
+      ]
+    }
+  ],
+  "slices": [
+    {
+      "id": "SBA-M1-S1",
+      "milestone_id": "SBA-M1",
+      "outcome": "Supabase verification creates one tenant-scoped founder session that cannot be forged in browser state",
+      "risk": "R4",
+      "risk_triggers": [
+        "authentication",
+        "tenant isolation",
+        "server-owned founder entitlement"
+      ],
+      "requires_decisions": [
+        "SBA-D1"
+      ],
+      "depends_on": [],
+      "paths": [
+        "api/auth/**",
+        "packages/domain/identity/**",
+        "tests/auth/**"
+      ],
+      "acceptance": [
+        {
+          "id": "SBA-M1-S1-A1",
+          "type": "happy",
+          "statement": "Verified founder bootstrap succeeds once and is audit logged"
+        },
+        {
+          "id": "SBA-M1-S1-A2",
+          "type": "happy",
+          "statement": "Forged cookie, JSON, header, and query entitlement attempts are denied"
+        },
+        {
+          "id": "SBA-M1-S1-US-NEG",
+          "type": "negative",
+          "statement": "Unauthorized or invalid use is rejected without leaking protected state or corrupting durable data"
+        }
+      ],
+      "evidence": [
+        "python3 -m unittest tests.test_hosted_auth -v"
+      ],
+      "review_required": true,
+      "review_roles": [
+        "verifier",
+        "adversary"
+      ],
+      "story_id": "US-1"
+    },
+    {
+      "id": "SBA-M1-S2",
+      "milestone_id": "SBA-M1",
+      "outcome": "The bounded fetch gateway admits one safe public homepage and rejects private or oversized targets",
+      "risk": "R4",
+      "risk_triggers": [
+        "public URL intake",
+        "SSRF",
+        "network boundary"
+      ],
+      "requires_decisions": [
+        "SBA-D2"
+      ],
+      "depends_on": [],
+      "paths": [
+        "api/intake/**",
+        "packages/domain/acquisition/**",
+        "tests/intake/**"
+      ],
+      "acceptance": [
+        {
+          "id": "SBA-M1-S2-A1",
+          "type": "happy",
+          "statement": "Connect-time address checks and redirect checks reject private targets"
+        },
+        {
+          "id": "SBA-M1-S2-A2",
+          "type": "happy",
+          "statement": "Body, time, redirect, and acquisition cost caps are enforced"
+        },
+        {
+          "id": "SBA-M1-S2-US-NEG",
+          "type": "negative",
+          "statement": "Unauthorized or invalid use is rejected without leaking protected state or corrupting durable data"
+        }
+      ],
+      "evidence": [
+        "python3 -m unittest tests.test_url_intake -v"
+      ],
+      "review_required": true,
+      "review_roles": [
+        "verifier",
+        "adversary"
+      ],
+      "story_id": "US-2"
+    },
+    {
+      "id": "SBA-M2-S1",
+      "milestone_id": "SBA-M2",
+      "outcome": "The tenant-scoped Studio creates, compares, and accepts schema-valid drafts without a publish route",
+      "risk": "R4",
+      "risk_triggers": [
+        "tenant isolation",
+        "immutable revisions",
+        "publish boundary"
+      ],
+      "requires_decisions": [
+        "SBA-D1"
+      ],
+      "depends_on": [
+        "SBA-M1-S1",
+        "SBA-M1-S2"
+      ],
+      "paths": [
+        "apps/studio/**",
+        "packages/domain/revisions/**",
+        "tests/studio/**"
+      ],
+      "acceptance": [
+        {
+          "id": "SBA-M2-S1-A1",
+          "type": "happy",
+          "statement": "Direct edit produces and accepts an immutable draft revision"
+        },
+        {
+          "id": "SBA-M2-S1-A2",
+          "type": "happy",
+          "statement": "Cross-tenant and agent-publish attempts are denied"
+        },
+        {
+          "id": "SBA-M2-S1-US-NEG",
+          "type": "negative",
+          "statement": "Unauthorized or invalid use is rejected without leaking protected state or corrupting durable data"
+        }
+      ],
+      "evidence": [
+        "python3 -m unittest tests.test_durable_studio -v",
+        "browser scenario: edit -> compare -> accept -> reload"
+      ],
+      "review_required": true,
+      "review_roles": [
+        "verifier",
+        "adversary"
+      ],
+      "story_id": "US-3"
+    }
+  ],
+  "models": {
+    "integrator": {
+      "provider": "configured-primary",
+      "model": "integrator-model"
+    },
+    "builder": {
+      "provider": "configured-primary",
+      "model": "builder-model"
+    },
+    "verifier": {
+      "provider": "configured-secondary",
+      "model": "verifier-model"
+    },
+    "adversary": {
+      "provider": "configured-secondary",
+      "model": "adversary-model"
+    },
+    "holdout": {
+      "provider": "configured-secondary",
+      "model": "holdout-model"
+    }
+  },
+  "model_policy": {
+    "preset": "sol-luna",
+    "roles": {
+      "integrator": "orchestrator",
+      "builder": "worker",
+      "verifier": "verifier",
+      "adversary": "adversary",
+      "holdout": "holdout"
+    },
+    "independent_from_builder": [
+      "verifier",
+      "adversary",
+      "holdout"
+    ],
+    "automatic_fallback": false
+  },
+  "execution": {
+    "graph_backend": "beads",
+    "graph_mode": "plan",
+    "beads_directory": "",
+    "beads_isolated_authorized": false,
+    "reasoning_effort": {
+      "orchestrator": "high",
+      "worker": "medium"
+    }
+  },
+  "testing": {
+    "focused_commands": [
+      "python3 -m unittest tests.test_hosted_auth -v"
+    ],
+    "integration_commands": [
+      "browser scenario: edit -> compare -> accept -> reload"
+    ],
+    "browser_scenarios": [
+      {
+        "action": "Complete the primary user journey through the real interface",
+        "expected": "The observable milestone outcome and durable state match the acceptance contract"
+      }
+    ],
+    "held_out_scenarios": [
+      {
+        "name": "Unauthorized boundary remains closed",
+        "given": "A second actor without ownership or authority",
+        "when": "The actor attempts the protected milestone journey",
+        "then": "The operation is denied without protected data disclosure"
+      }
+    ],
+    "evidence_requirements": [
+      "Exact mission ID, entity ID, candidate or integration SHA, command or scenario, zero exit code, environment fingerprint, PASS observed result, timezone timestamp, artifact path and SHA-256, and criterion IDs"
+    ]
+  },
+  "security": {
+    "data_classification": "personal",
+    "risk_triggers": [
+      "SSRF",
+      "authentication",
+      "immutable revisions",
+      "network boundary",
+      "public URL intake",
+      "publish boundary",
+      "server-owned founder entitlement",
+      "tenant isolation"
+    ],
+    "threat_scenarios": [
+      {
+        "id": "SBA_HOSTED_M-TH-1",
+        "name": "Unauthorized authority crossing",
+        "scenario": "An unauthorized actor attempts to cross a declared ownership or authority boundary",
+        "attack_surface": "Ownership and authorization boundary",
+        "expected_control": "The system denies the action and emits no protected content or unsafe side effect"
+      },
+      {
+        "id": "SBA_HOSTED_M-TH-2",
+        "name": "Interrupted write atomicity",
+        "scenario": "Malformed or interrupted input attempts to leave partially committed state",
+        "attack_surface": "Transactional persistence boundary",
+        "expected_control": "The operation fails atomically and the user can safely retry or recover"
+      }
+    ],
+    "authority_decisions": [
+      {
+        "id": "SBA-D1",
+        "statement": "Supabase identity and server-owned entitlement are the only founder authority",
+        "status": "locked"
+      },
+      {
+        "id": "SBA-D2",
+        "statement": "The bounded connect-time fetch gateway is the only public URL intake path",
+        "status": "locked"
+      }
+    ],
+    "derived_risk": "R4",
+    "mandatory_adversarial_review": true,
+    "adversarial_lens": "kryptonite"
+  },
+  "intake": {
+    "schema_version": 1,
+    "readiness_score": 100,
+    "user_authored_intent": true
+  }
+}

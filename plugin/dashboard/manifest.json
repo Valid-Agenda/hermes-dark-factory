@@ -1,0 +1,14 @@
+{
+  "name": "dark-factory",
+  "label": "Dark Factory",
+  "description": "Compile a bounded product brief, role-specific model plan, acceptance gates, and risk decisions into a Dark Factory mission.",
+  "icon": "Shield",
+  "version": "0.3.0",
+  "tab": {
+    "path": "/dark-factory",
+    "position": "after:kanban"
+  },
+  "entry": "dist/index.js",
+  "css": "dist/style.css",
+  "api": "plugin_api.py"
+}

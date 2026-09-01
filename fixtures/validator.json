@@ -1,0 +1,483 @@
+{
+  "schema_version": 2,
+  "mission": {
+    "id": "validator-registers-representative",
+    "outcome": "Reviewed source becomes conflict-resolved canonical operating registers and provenance-safe draft outputs in one local workbench",
+    "name": "Validator Registers Representative",
+    "problem": "Users need a dependable way to complete the Validator Registers Representative workflow without unsafe or confusing failures",
+    "context": "This mission exercises the existing Validator Registers Representative product architecture while preserving current project conventions and evidence requirements",
+    "project_mode": "existing",
+    "workspace_path": "/path/to/validator",
+    "out_of_scope": [
+      "production deployment"
+    ],
+    "constraints": [
+      "Preserve existing architecture and public contracts unless an explicit authority decision permits change"
+    ],
+    "success_metrics": [
+      "Every declared milestone acceptance scenario passes against the exact integrated candidate SHA"
+    ],
+    "surfaces": [
+      "web ui"
+    ],
+    "personas": [
+      {
+        "id": "primary-user",
+        "name": "Primary user",
+        "context": "Works in the product under realistic permissions and normal operating constraints",
+        "need": "Complete the core journey reliably without data leakage or ambiguous recovery"
+      }
+    ],
+    "user_stories": [
+      {
+        "id": "US-1",
+        "persona_id": "primary-user",
+        "want": "use the delivered capability safely",
+        "so_that": "Proposal and conflict services atomically create revision-safe canonical records with audited provenance",
+        "acceptance": [
+          {
+            "id": "VAL-M1-S1-A1",
+            "type": "happy",
+            "statement": "Ordinary acceptance cannot bypass a conflict"
+          },
+          {
+            "id": "VAL-M1-S1-A2",
+            "type": "happy",
+            "statement": "Choose, merge, defer, stale revision, and cross-engagement paths are atomic"
+          },
+          {
+            "id": "VAL-M1-S1-US-NEG",
+            "type": "negative",
+            "statement": "Unauthorized or invalid use is rejected without leaking protected state or corrupting durable data"
+          }
+        ],
+        "paths": [
+          "validator_app/schema.py",
+          "validator_app/proposals.py",
+          "validator_app/conflicts.py",
+          "tests/test_proposals.py",
+          "tests/test_conflicts.py"
+        ]
+      },
+      {
+        "id": "US-2",
+        "persona_id": "primary-user",
+        "want": "use the delivered capability safely",
+        "so_that": "Registers and Intake present reviewed systems, workflows, responsibilities, gaps, and conflicts accessibly",
+        "acceptance": [
+          {
+            "id": "VAL-M1-S2-A1",
+            "type": "happy",
+            "statement": "A reviewer can choose, merge, or defer and see the resulting register state"
+          },
+          {
+            "id": "VAL-M1-S2-A2",
+            "type": "happy",
+            "statement": "Keyboard, focus, overflow, and reduced-motion checks pass"
+          },
+          {
+            "id": "VAL-M1-S2-US-NEG",
+            "type": "negative",
+            "statement": "Unauthorized or invalid use is rejected without leaking protected state or corrupting durable data"
+          }
+        ],
+        "paths": [
+          "frontend/src/routes/registers/**",
+          "frontend/src/routes/intake/**",
+          "tests/browser/registers/**"
+        ]
+      },
+      {
+        "id": "US-3",
+        "persona_id": "primary-user",
+        "want": "use the delivered capability safely",
+        "so_that": "Gamma and PDF drafts include register landscapes, explicit gaps, conflicts, and provenance-safe limitations",
+        "acceptance": [
+          {
+            "id": "VAL-M1-S3-A1",
+            "type": "happy",
+            "statement": "Drafts include systems, workflows, responsibility gaps, and unresolved conflicts"
+          },
+          {
+            "id": "VAL-M1-S3-A2",
+            "type": "happy",
+            "statement": "Accepted markup and URL/file-loading syntax remain inert"
+          },
+          {
+            "id": "VAL-M1-S3-US-NEG",
+            "type": "negative",
+            "statement": "Unauthorized or invalid use is rejected without leaking protected state or corrupting durable data"
+          }
+        ],
+        "paths": [
+          "validator_app/exports/**",
+          "tests/test_exports.py"
+        ]
+      }
+    ]
+  },
+  "policy": {
+    "max_active_milestones": 1,
+    "max_parallel_slices": 2,
+    "repeated_failure_limit": 2,
+    "max_remediation_cycles": 1
+  },
+  "decisions": [
+    {
+      "id": "VAL-D1",
+      "statement": "Only reviewed proposals and conflict-resolution services may write canonical operating records",
+      "status": "locked"
+    },
+    {
+      "id": "VAL-D2",
+      "statement": "Registers is a first-class route and Portfolio remains the opportunity validation queue",
+      "status": "locked"
+    }
+  ],
+  "milestones": [
+    {
+      "id": "VAL-M1",
+      "outcome": "A reviewer resolves structured operating-record proposals and sees canonical registers with complete reviewed provenance",
+      "depends_on": [],
+      "slices": [
+        "VAL-M1-S1",
+        "VAL-M1-S2",
+        "VAL-M1-S3"
+      ],
+      "acceptance": [
+        {
+          "id": "VAL-M1-A1",
+          "type": "happy",
+          "statement": "Choose, merge, and defer produce revision-safe canonical or unresolved states"
+        },
+        {
+          "id": "VAL-M1-A2",
+          "type": "happy",
+          "statement": "Every displayed register record has reviewed provenance and explicit gaps"
+        },
+        {
+          "id": "VAL-M1-A3",
+          "type": "negative",
+          "statement": "Gamma and PDF drafts state unresolved ownership without overclaiming"
+        },
+        {
+          "id": "VAL-M1-S1-A1",
+          "type": "happy",
+          "statement": "Ordinary acceptance cannot bypass a conflict"
+        },
+        {
+          "id": "VAL-M1-S1-A2",
+          "type": "happy",
+          "statement": "Choose, merge, defer, stale revision, and cross-engagement paths are atomic"
+        },
+        {
+          "id": "VAL-M1-S1-US-NEG",
+          "type": "negative",
+          "statement": "Unauthorized or invalid use is rejected without leaking protected state or corrupting durable data"
+        },
+        {
+          "id": "VAL-M1-S2-A1",
+          "type": "happy",
+          "statement": "A reviewer can choose, merge, or defer and see the resulting register state"
+        },
+        {
+          "id": "VAL-M1-S2-A2",
+          "type": "happy",
+          "statement": "Keyboard, focus, overflow, and reduced-motion checks pass"
+        },
+        {
+          "id": "VAL-M1-S2-US-NEG",
+          "type": "negative",
+          "statement": "Unauthorized or invalid use is rejected without leaking protected state or corrupting durable data"
+        },
+        {
+          "id": "VAL-M1-S3-A1",
+          "type": "happy",
+          "statement": "Drafts include systems, workflows, responsibility gaps, and unresolved conflicts"
+        },
+        {
+          "id": "VAL-M1-S3-A2",
+          "type": "happy",
+          "statement": "Accepted markup and URL/file-loading syntax remain inert"
+        },
+        {
+          "id": "VAL-M1-S3-US-NEG",
+          "type": "negative",
+          "statement": "Unauthorized or invalid use is rejected without leaking protected state or corrupting durable data"
+        }
+      ],
+      "story_ids": [
+        "US-1",
+        "US-2",
+        "US-3"
+      ]
+    }
+  ],
+  "slices": [
+    {
+      "id": "VAL-M1-S1",
+      "milestone_id": "VAL-M1",
+      "outcome": "Proposal and conflict services atomically create revision-safe canonical records with audited provenance",
+      "risk": "R3",
+      "risk_triggers": [
+        "schema migration",
+        "canonical writes",
+        "engagement isolation",
+        "audit history"
+      ],
+      "requires_decisions": [
+        "VAL-D1"
+      ],
+      "depends_on": [],
+      "paths": [
+        "validator_app/schema.py",
+        "validator_app/proposals.py",
+        "validator_app/conflicts.py",
+        "tests/test_proposals.py",
+        "tests/test_conflicts.py"
+      ],
+      "acceptance": [
+        {
+          "id": "VAL-M1-S1-A1",
+          "type": "happy",
+          "statement": "Ordinary acceptance cannot bypass a conflict"
+        },
+        {
+          "id": "VAL-M1-S1-A2",
+          "type": "happy",
+          "statement": "Choose, merge, defer, stale revision, and cross-engagement paths are atomic"
+        },
+        {
+          "id": "VAL-M1-S1-US-NEG",
+          "type": "negative",
+          "statement": "Unauthorized or invalid use is rejected without leaking protected state or corrupting durable data"
+        }
+      ],
+      "evidence": [
+        "uv run pytest tests/test_proposals.py tests/test_conflicts.py -q"
+      ],
+      "review_required": true,
+      "review_roles": [
+        "verifier",
+        "adversary"
+      ],
+      "story_id": "US-1"
+    },
+    {
+      "id": "VAL-M1-S2",
+      "milestone_id": "VAL-M1",
+      "outcome": "Registers and Intake present reviewed systems, workflows, responsibilities, gaps, and conflicts accessibly",
+      "risk": "R2",
+      "risk_triggers": [
+        "user-facing workflow",
+        "keyboard and focus state"
+      ],
+      "requires_decisions": [
+        "VAL-D2"
+      ],
+      "depends_on": [
+        "VAL-M1-S1"
+      ],
+      "paths": [
+        "frontend/src/routes/registers/**",
+        "frontend/src/routes/intake/**",
+        "tests/browser/registers/**"
+      ],
+      "acceptance": [
+        {
+          "id": "VAL-M1-S2-A1",
+          "type": "happy",
+          "statement": "A reviewer can choose, merge, or defer and see the resulting register state"
+        },
+        {
+          "id": "VAL-M1-S2-A2",
+          "type": "happy",
+          "statement": "Keyboard, focus, overflow, and reduced-motion checks pass"
+        },
+        {
+          "id": "VAL-M1-S2-US-NEG",
+          "type": "negative",
+          "statement": "Unauthorized or invalid use is rejected without leaking protected state or corrupting durable data"
+        }
+      ],
+      "evidence": [
+        "npm run typecheck",
+        "browser scenario: proposal -> conflict -> defer -> registers gap"
+      ],
+      "review_required": true,
+      "review_roles": [
+        "verifier",
+        "adversary"
+      ],
+      "story_id": "US-2"
+    },
+    {
+      "id": "VAL-M1-S3",
+      "milestone_id": "VAL-M1",
+      "outcome": "Gamma and PDF drafts include register landscapes, explicit gaps, conflicts, and provenance-safe limitations",
+      "risk": "R2",
+      "risk_triggers": [
+        "generated client-facing draft",
+        "inert export rendering"
+      ],
+      "requires_decisions": [
+        "VAL-D1"
+      ],
+      "depends_on": [
+        "VAL-M1-S1"
+      ],
+      "paths": [
+        "validator_app/exports/**",
+        "tests/test_exports.py"
+      ],
+      "acceptance": [
+        {
+          "id": "VAL-M1-S3-A1",
+          "type": "happy",
+          "statement": "Drafts include systems, workflows, responsibility gaps, and unresolved conflicts"
+        },
+        {
+          "id": "VAL-M1-S3-A2",
+          "type": "happy",
+          "statement": "Accepted markup and URL/file-loading syntax remain inert"
+        },
+        {
+          "id": "VAL-M1-S3-US-NEG",
+          "type": "negative",
+          "statement": "Unauthorized or invalid use is rejected without leaking protected state or corrupting durable data"
+        }
+      ],
+      "evidence": [
+        "uv run pytest tests/test_exports.py -q"
+      ],
+      "review_required": true,
+      "review_roles": [
+        "verifier",
+        "adversary"
+      ],
+      "story_id": "US-3"
+    }
+  ],
+  "models": {
+    "integrator": {
+      "provider": "configured-primary",
+      "model": "integrator-model"
+    },
+    "builder": {
+      "provider": "configured-primary",
+      "model": "builder-model"
+    },
+    "verifier": {
+      "provider": "configured-secondary",
+      "model": "verifier-model"
+    },
+    "adversary": {
+      "provider": "configured-secondary",
+      "model": "adversary-model"
+    },
+    "holdout": {
+      "provider": "configured-secondary",
+      "model": "holdout-model"
+    }
+  },
+  "model_policy": {
+    "preset": "sol-luna",
+    "roles": {
+      "integrator": "orchestrator",
+      "builder": "worker",
+      "verifier": "verifier",
+      "adversary": "adversary",
+      "holdout": "holdout"
+    },
+    "independent_from_builder": [
+      "verifier",
+      "adversary",
+      "holdout"
+    ],
+    "automatic_fallback": false
+  },
+  "execution": {
+    "graph_backend": "beads",
+    "graph_mode": "plan",
+    "beads_directory": "",
+    "beads_isolated_authorized": false,
+    "reasoning_effort": {
+      "orchestrator": "high",
+      "worker": "medium"
+    }
+  },
+  "testing": {
+    "focused_commands": [
+      "uv run pytest tests/test_proposals.py tests/test_conflicts.py -q"
+    ],
+    "integration_commands": [
+      "uv run pytest tests/test_exports.py -q"
+    ],
+    "browser_scenarios": [
+      {
+        "action": "Complete the primary user journey through the real interface",
+        "expected": "The observable milestone outcome and durable state match the acceptance contract"
+      }
+    ],
+    "held_out_scenarios": [
+      {
+        "name": "Unauthorized boundary remains closed",
+        "given": "A second actor without ownership or authority",
+        "when": "The actor attempts the protected milestone journey",
+        "then": "The operation is denied without protected data disclosure"
+      }
+    ],
+    "evidence_requirements": [
+      "Exact mission ID, entity ID, candidate or integration SHA, command or scenario, zero exit code, environment fingerprint, PASS observed result, timezone timestamp, artifact path and SHA-256, and criterion IDs"
+    ]
+  },
+  "security": {
+    "data_classification": "internal",
+    "risk_triggers": [
+      "audit history",
+      "canonical writes",
+      "engagement isolation",
+      "generated client-facing draft",
+      "inert export rendering",
+      "keyboard and focus state",
+      "schema migration",
+      "user-facing workflow"
+    ],
+    "threat_scenarios": [
+      {
+        "id": "VALIDATOR_RE-TH-1",
+        "name": "Unauthorized authority crossing",
+        "scenario": "An unauthorized actor attempts to cross a declared ownership or authority boundary",
+        "attack_surface": "Ownership and authorization boundary",
+        "expected_control": "The system denies the action and emits no protected content or unsafe side effect"
+      },
+      {
+        "id": "VALIDATOR_RE-TH-2",
+        "name": "Interrupted write atomicity",
+        "scenario": "Malformed or interrupted input attempts to leave partially committed state",
+        "attack_surface": "Transactional persistence boundary",
+        "expected_control": "The operation fails atomically and the user can safely retry or recover"
+      }
+    ],
+    "authority_decisions": [
+      {
+        "id": "VAL-D1",
+        "statement": "Only reviewed proposals and conflict-resolution services may write canonical operating records",
+        "status": "locked"
+      },
+      {
+        "id": "VAL-D2",
+        "statement": "Registers is a first-class route and Portfolio remains the opportunity validation queue",
+        "status": "locked"
+      }
+    ],
+    "derived_risk": "R3",
+    "mandatory_adversarial_review": true,
+    "adversarial_lens": "kryptonite"
+  },
+  "intake": {
+    "schema_version": 1,
+    "readiness_score": 100,
+    "user_authored_intent": true
+  }
+}

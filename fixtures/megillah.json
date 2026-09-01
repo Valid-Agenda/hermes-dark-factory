@@ -1,0 +1,383 @@
+{
+  "schema_version": 2,
+  "mission": {
+    "id": "megillah-services-representative",
+    "outcome": "Authorised coordinators manage service rosters while volunteers respond through safe scoped tokens without disclosing tenant data",
+    "name": "Megillah Services Representative",
+    "problem": "Users need a dependable way to complete the Megillah Services Representative workflow without unsafe or confusing failures",
+    "context": "This mission exercises the existing Megillah Services Representative product architecture while preserving current project conventions and evidence requirements",
+    "project_mode": "existing",
+    "workspace_path": "/path/to/megillah",
+    "out_of_scope": [
+      "production deployment"
+    ],
+    "constraints": [
+      "Preserve existing architecture and public contracts unless an explicit authority decision permits change"
+    ],
+    "success_metrics": [
+      "Every declared milestone acceptance scenario passes against the exact integrated candidate SHA"
+    ],
+    "surfaces": [
+      "web ui"
+    ],
+    "personas": [
+      {
+        "id": "primary-user",
+        "name": "Primary user",
+        "context": "Works in the product under realistic permissions and normal operating constraints",
+        "need": "Complete the core journey reliably without data leakage or ambiguous recovery"
+      }
+    ],
+    "user_stories": [
+      {
+        "id": "US-1",
+        "persona_id": "primary-user",
+        "want": "use the delivered capability safely",
+        "so_that": "Tenant-scoped roster contracts and persistence enforce coordinator permissions and restricted-field policy",
+        "acceptance": [
+          {
+            "id": "MEG-M1-S1-A1",
+            "type": "happy",
+            "statement": "Authorised coordinator operations pass and cross-tenant operations fail"
+          },
+          {
+            "id": "MEG-M1-S1-A2",
+            "type": "happy",
+            "statement": "Restricted volunteer fields do not appear in general roster reads"
+          },
+          {
+            "id": "MEG-M1-S1-US-NEG",
+            "type": "negative",
+            "statement": "Unauthorized or invalid use is rejected without leaking protected state or corrupting durable data"
+          }
+        ],
+        "paths": [
+          "packages/services-rosters/**",
+          "supabase/migrations/**",
+          "tests/services-rosters/**"
+        ]
+      },
+      {
+        "id": "US-2",
+        "persona_id": "primary-user",
+        "want": "use the delivered capability safely",
+        "so_that": "A volunteer receives and uses one safe scoped response token under Communications suppression authority",
+        "acceptance": [
+          {
+            "id": "MEG-M1-S2-A1",
+            "type": "happy",
+            "statement": "Token prediction, replay, expiry, and over-scope attempts fail"
+          },
+          {
+            "id": "MEG-M1-S2-A2",
+            "type": "happy",
+            "statement": "Suppressed or non-consented contacts do not receive roster notification"
+          },
+          {
+            "id": "MEG-M1-S2-US-NEG",
+            "type": "negative",
+            "statement": "Unauthorized or invalid use is rejected without leaking protected state or corrupting durable data"
+          }
+        ],
+        "paths": [
+          "packages/services-rosters/public-response/**",
+          "packages/communications/**",
+          "tests/services-rosters/public/**"
+        ]
+      }
+    ]
+  },
+  "policy": {
+    "max_active_milestones": 1,
+    "max_parallel_slices": 2,
+    "repeated_failure_limit": 2,
+    "max_remediation_cycles": 1
+  },
+  "decisions": [
+    {
+      "id": "MEG-D1",
+      "statement": "Communications owns consent, subscription, and suppression authority used by roster notifications",
+      "status": "locked"
+    },
+    {
+      "id": "MEG-D2",
+      "statement": "Volunteer response tokens are random, hashed at rest, scoped, expiring, and single-purpose",
+      "status": "locked"
+    }
+  ],
+  "milestones": [
+    {
+      "id": "MEG-M1",
+      "outcome": "A tenant coordinator creates a roster and a volunteer responds without token prediction or roster disclosure",
+      "depends_on": [],
+      "slices": [
+        "MEG-M1-S1",
+        "MEG-M1-S2"
+      ],
+      "acceptance": [
+        {
+          "id": "MEG-M1-A1",
+          "type": "negative",
+          "statement": "Authorised roster creation and denial paths pass against tenant and RLS boundaries"
+        },
+        {
+          "id": "MEG-M1-A2",
+          "type": "happy",
+          "statement": "A volunteer token performs only its scoped response and reveals no roster"
+        },
+        {
+          "id": "MEG-M1-S1-A1",
+          "type": "happy",
+          "statement": "Authorised coordinator operations pass and cross-tenant operations fail"
+        },
+        {
+          "id": "MEG-M1-S1-A2",
+          "type": "happy",
+          "statement": "Restricted volunteer fields do not appear in general roster reads"
+        },
+        {
+          "id": "MEG-M1-S1-US-NEG",
+          "type": "negative",
+          "statement": "Unauthorized or invalid use is rejected without leaking protected state or corrupting durable data"
+        },
+        {
+          "id": "MEG-M1-S2-A1",
+          "type": "happy",
+          "statement": "Token prediction, replay, expiry, and over-scope attempts fail"
+        },
+        {
+          "id": "MEG-M1-S2-A2",
+          "type": "happy",
+          "statement": "Suppressed or non-consented contacts do not receive roster notification"
+        },
+        {
+          "id": "MEG-M1-S2-US-NEG",
+          "type": "negative",
+          "statement": "Unauthorized or invalid use is rejected without leaking protected state or corrupting durable data"
+        }
+      ],
+      "story_ids": [
+        "US-1",
+        "US-2"
+      ]
+    }
+  ],
+  "slices": [
+    {
+      "id": "MEG-M1-S1",
+      "milestone_id": "MEG-M1",
+      "outcome": "Tenant-scoped roster contracts and persistence enforce coordinator permissions and restricted-field policy",
+      "risk": "R4",
+      "risk_triggers": [
+        "RLS",
+        "tenant permissions",
+        "personal data",
+        "schema migration"
+      ],
+      "requires_decisions": [],
+      "depends_on": [],
+      "paths": [
+        "packages/services-rosters/**",
+        "supabase/migrations/**",
+        "tests/services-rosters/**"
+      ],
+      "acceptance": [
+        {
+          "id": "MEG-M1-S1-A1",
+          "type": "happy",
+          "statement": "Authorised coordinator operations pass and cross-tenant operations fail"
+        },
+        {
+          "id": "MEG-M1-S1-A2",
+          "type": "happy",
+          "statement": "Restricted volunteer fields do not appear in general roster reads"
+        },
+        {
+          "id": "MEG-M1-S1-US-NEG",
+          "type": "negative",
+          "statement": "Unauthorized or invalid use is rejected without leaking protected state or corrupting durable data"
+        }
+      ],
+      "evidence": [
+        "pnpm test --filter services-rosters",
+        "RLS denial matrix"
+      ],
+      "review_required": true,
+      "review_roles": [
+        "verifier",
+        "adversary"
+      ],
+      "story_id": "US-1"
+    },
+    {
+      "id": "MEG-M1-S2",
+      "milestone_id": "MEG-M1",
+      "outcome": "A volunteer receives and uses one safe scoped response token under Communications suppression authority",
+      "risk": "R4",
+      "risk_triggers": [
+        "public token",
+        "personal data",
+        "Communications consent authority"
+      ],
+      "requires_decisions": [
+        "MEG-D1",
+        "MEG-D2"
+      ],
+      "depends_on": [
+        "MEG-M1-S1"
+      ],
+      "paths": [
+        "packages/services-rosters/public-response/**",
+        "packages/communications/**",
+        "tests/services-rosters/public/**"
+      ],
+      "acceptance": [
+        {
+          "id": "MEG-M1-S2-A1",
+          "type": "happy",
+          "statement": "Token prediction, replay, expiry, and over-scope attempts fail"
+        },
+        {
+          "id": "MEG-M1-S2-A2",
+          "type": "happy",
+          "statement": "Suppressed or non-consented contacts do not receive roster notification"
+        },
+        {
+          "id": "MEG-M1-S2-US-NEG",
+          "type": "negative",
+          "statement": "Unauthorized or invalid use is rejected without leaking protected state or corrupting durable data"
+        }
+      ],
+      "evidence": [
+        "pnpm test --filter services-rosters-public",
+        "public-token threat-model scenarios"
+      ],
+      "review_required": true,
+      "review_roles": [
+        "verifier",
+        "adversary"
+      ],
+      "story_id": "US-2"
+    }
+  ],
+  "models": {
+    "integrator": {
+      "provider": "configured-primary",
+      "model": "integrator-model"
+    },
+    "builder": {
+      "provider": "configured-primary",
+      "model": "builder-model"
+    },
+    "verifier": {
+      "provider": "configured-secondary",
+      "model": "verifier-model"
+    },
+    "adversary": {
+      "provider": "configured-secondary",
+      "model": "adversary-model"
+    },
+    "holdout": {
+      "provider": "configured-secondary",
+      "model": "holdout-model"
+    }
+  },
+  "model_policy": {
+    "preset": "sol-luna",
+    "roles": {
+      "integrator": "orchestrator",
+      "builder": "worker",
+      "verifier": "verifier",
+      "adversary": "adversary",
+      "holdout": "holdout"
+    },
+    "independent_from_builder": [
+      "verifier",
+      "adversary",
+      "holdout"
+    ],
+    "automatic_fallback": false
+  },
+  "execution": {
+    "graph_backend": "beads",
+    "graph_mode": "plan",
+    "beads_directory": "",
+    "beads_isolated_authorized": false,
+    "reasoning_effort": {
+      "orchestrator": "high",
+      "worker": "medium"
+    }
+  },
+  "testing": {
+    "focused_commands": [
+      "pnpm test --filter services-rosters"
+    ],
+    "integration_commands": [
+      "public-token threat-model scenarios"
+    ],
+    "browser_scenarios": [
+      {
+        "action": "Complete the primary user journey through the real interface",
+        "expected": "The observable milestone outcome and durable state match the acceptance contract"
+      }
+    ],
+    "held_out_scenarios": [
+      {
+        "name": "Unauthorized boundary remains closed",
+        "given": "A second actor without ownership or authority",
+        "when": "The actor attempts the protected milestone journey",
+        "then": "The operation is denied without protected data disclosure"
+      }
+    ],
+    "evidence_requirements": [
+      "Exact mission ID, entity ID, candidate or integration SHA, command or scenario, zero exit code, environment fingerprint, PASS observed result, timezone timestamp, artifact path and SHA-256, and criterion IDs"
+    ]
+  },
+  "security": {
+    "data_classification": "personal",
+    "risk_triggers": [
+      "Communications consent authority",
+      "RLS",
+      "personal data",
+      "public token",
+      "schema migration",
+      "tenant permissions"
+    ],
+    "threat_scenarios": [
+      {
+        "id": "MEGILLAH_SER-TH-1",
+        "name": "Unauthorized authority crossing",
+        "scenario": "An unauthorized actor attempts to cross a declared ownership or authority boundary",
+        "attack_surface": "Ownership and authorization boundary",
+        "expected_control": "The system denies the action and emits no protected content or unsafe side effect"
+      },
+      {
+        "id": "MEGILLAH_SER-TH-2",
+        "name": "Interrupted write atomicity",
+        "scenario": "Malformed or interrupted input attempts to leave partially committed state",
+        "attack_surface": "Transactional persistence boundary",
+        "expected_control": "The operation fails atomically and the user can safely retry or recover"
+      }
+    ],
+    "authority_decisions": [
+      {
+        "id": "MEG-D1",
+        "statement": "Communications owns consent, subscription, and suppression authority used by roster notifications",
+        "status": "locked"
+      },
+      {
+        "id": "MEG-D2",
+        "statement": "Volunteer response tokens are random, hashed at rest, scoped, expiring, and single-purpose",
+        "status": "locked"
+      }
+    ],
+    "derived_risk": "R4",
+    "mandatory_adversarial_review": true,
+    "adversarial_lens": "kryptonite"
+  },
+  "intake": {
+    "schema_version": 1,
+    "readiness_score": 100,
+    "user_authored_intent": true
+  }
+}

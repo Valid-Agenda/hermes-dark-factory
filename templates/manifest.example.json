@@ -1,0 +1,338 @@
+{
+  "schema_version": 2,
+  "mission": {
+    "id": "example-product-v1",
+    "outcome": "A verified user completes the core product journey and can safely resume it later",
+    "out_of_scope": [
+      "production deployment",
+      "paid provider usage",
+      "real customer data"
+    ],
+    "name": "Example Product V1",
+    "problem": "Users need a dependable way to complete the Example Product V1 workflow without unsafe or confusing failures",
+    "context": "This mission exercises the existing Example Product V1 product architecture while preserving current project conventions and evidence requirements",
+    "project_mode": "existing",
+    "workspace_path": "/path/to/example-product",
+    "constraints": [
+      "Preserve existing architecture and public contracts unless an explicit authority decision permits change"
+    ],
+    "success_metrics": [
+      "Every declared milestone acceptance scenario passes against the exact integrated candidate SHA"
+    ],
+    "surfaces": [
+      "web ui"
+    ],
+    "personas": [
+      {
+        "id": "primary-user",
+        "name": "Primary user",
+        "context": "Works in the product under realistic permissions and normal operating constraints",
+        "need": "Complete the core journey reliably without data leakage or ambiguous recovery"
+      }
+    ],
+    "user_stories": [
+      {
+        "id": "US-1",
+        "persona_id": "primary-user",
+        "want": "use the delivered capability safely",
+        "so_that": "The server persists a verified user's project and enforces ownership on every read",
+        "acceptance": [
+          {
+            "id": "M1-S1-A1",
+            "type": "happy",
+            "statement": "Create and reopen returns the same immutable project identifier"
+          },
+          {
+            "id": "M1-S1-A2",
+            "type": "negative",
+            "statement": "Cross-owner read is denied without content disclosure"
+          }
+        ],
+        "paths": [
+          "src/domain/projects/**",
+          "src/server/projects/**",
+          "tests/projects/**"
+        ]
+      },
+      {
+        "id": "US-2",
+        "persona_id": "primary-user",
+        "want": "use the delivered capability safely",
+        "so_that": "The browser presents create and reopen states through one accessible project journey",
+        "acceptance": [
+          {
+            "id": "M1-S2-A1",
+            "type": "happy",
+            "statement": "A verified user can create, reload, and select the persisted project"
+          },
+          {
+            "id": "M1-S2-US-NEG",
+            "type": "negative",
+            "statement": "Unauthorized or invalid use is rejected without leaking protected state or corrupting durable data"
+          }
+        ],
+        "paths": [
+          "src/ui/projects/**",
+          "tests/browser/projects/**"
+        ]
+      }
+    ]
+  },
+  "policy": {
+    "max_active_milestones": 1,
+    "max_parallel_slices": 2,
+    "repeated_failure_limit": 2,
+    "max_remediation_cycles": 1
+  },
+  "decisions": [
+    {
+      "id": "D1",
+      "statement": "Server-side identity is the only authority for project ownership",
+      "status": "locked"
+    }
+  ],
+  "milestones": [
+    {
+      "id": "M1",
+      "outcome": "A verified user creates and reopens one durable project without crossing an ownership boundary",
+      "depends_on": [],
+      "slices": [
+        "M1-S1",
+        "M1-S2"
+      ],
+      "acceptance": [
+        {
+          "id": "M1-A1",
+          "type": "happy",
+          "statement": "The scripted browser journey creates, reloads, and reopens the same project"
+        },
+        {
+          "id": "M1-A2",
+          "type": "negative",
+          "statement": "A second user receives a deterministic denial and no project data"
+        },
+        {
+          "id": "M1-S1-A1",
+          "type": "happy",
+          "statement": "Create and reopen returns the same immutable project identifier"
+        },
+        {
+          "id": "M1-S1-A2",
+          "type": "negative",
+          "statement": "Cross-owner read is denied without content disclosure"
+        },
+        {
+          "id": "M1-S2-A1",
+          "type": "happy",
+          "statement": "A verified user can create, reload, and select the persisted project"
+        },
+        {
+          "id": "M1-S2-US-NEG",
+          "type": "negative",
+          "statement": "Unauthorized or invalid use is rejected without leaking protected state or corrupting durable data"
+        }
+      ],
+      "story_ids": [
+        "US-1",
+        "US-2"
+      ]
+    }
+  ],
+  "slices": [
+    {
+      "id": "M1-S1",
+      "milestone_id": "M1",
+      "outcome": "The server persists a verified user's project and enforces ownership on every read",
+      "risk": "R3",
+      "risk_triggers": [
+        "authentication",
+        "ownership authorisation",
+        "tenant isolation"
+      ],
+      "requires_decisions": [
+        "D1"
+      ],
+      "depends_on": [],
+      "paths": [
+        "src/domain/projects/**",
+        "src/server/projects/**",
+        "tests/projects/**"
+      ],
+      "acceptance": [
+        {
+          "id": "M1-S1-A1",
+          "type": "happy",
+          "statement": "Create and reopen returns the same immutable project identifier"
+        },
+        {
+          "id": "M1-S1-A2",
+          "type": "negative",
+          "statement": "Cross-owner read is denied without content disclosure"
+        }
+      ],
+      "evidence": [
+        "pytest tests/projects -q"
+      ],
+      "review_required": true,
+      "review_roles": [
+        "verifier",
+        "adversary"
+      ],
+      "story_id": "US-1"
+    },
+    {
+      "id": "M1-S2",
+      "milestone_id": "M1",
+      "outcome": "The browser presents create and reopen states through one accessible project journey",
+      "risk": "R2",
+      "risk_triggers": [
+        "user-facing state flow"
+      ],
+      "requires_decisions": [
+        "D1"
+      ],
+      "depends_on": [
+        "M1-S1"
+      ],
+      "paths": [
+        "src/ui/projects/**",
+        "tests/browser/projects/**"
+      ],
+      "acceptance": [
+        {
+          "id": "M1-S2-A1",
+          "type": "happy",
+          "statement": "A verified user can create, reload, and select the persisted project"
+        },
+        {
+          "id": "M1-S2-US-NEG",
+          "type": "negative",
+          "statement": "Unauthorized or invalid use is rejected without leaking protected state or corrupting durable data"
+        }
+      ],
+      "evidence": [
+        "pytest tests/browser/projects -q",
+        "browser scenario: create -> reload -> reopen -> visible persisted state"
+      ],
+      "review_required": true,
+      "review_roles": [
+        "verifier",
+        "adversary"
+      ],
+      "story_id": "US-2"
+    }
+  ],
+  "models": {
+    "integrator": {
+      "provider": "openai-codex",
+      "model": "gpt-5.6-sol-900k"
+    },
+    "builder": {
+      "provider": "openai-codex",
+      "model": "gpt-5.6-luna"
+    },
+    "verifier": {
+      "provider": "configured-secondary",
+      "model": "verifier-model"
+    },
+    "adversary": {
+      "provider": "configured-secondary",
+      "model": "adversary-model"
+    },
+    "holdout": {
+      "provider": "configured-secondary",
+      "model": "holdout-model"
+    }
+  },
+  "model_policy": {
+    "preset": "sol-luna",
+    "roles": {
+      "integrator": "orchestrator",
+      "builder": "worker",
+      "verifier": "verifier",
+      "adversary": "adversary",
+      "holdout": "holdout"
+    },
+    "independent_from_builder": [
+      "verifier",
+      "adversary",
+      "holdout"
+    ],
+    "automatic_fallback": false
+  },
+  "execution": {
+    "graph_backend": "beads",
+    "graph_mode": "plan",
+    "beads_directory": "",
+    "beads_isolated_authorized": false,
+    "reasoning_effort": {
+      "orchestrator": "high",
+      "worker": "medium"
+    }
+  },
+  "testing": {
+    "focused_commands": [
+      "pytest tests/projects -q"
+    ],
+    "integration_commands": [
+      "browser scenario: create -> reload -> reopen -> visible persisted state"
+    ],
+    "browser_scenarios": [
+      {
+        "action": "Complete the primary user journey through the real interface",
+        "expected": "The observable milestone outcome and durable state match the acceptance contract"
+      }
+    ],
+    "held_out_scenarios": [
+      {
+        "name": "Unauthorized boundary remains closed",
+        "given": "A second actor without ownership or authority",
+        "when": "The actor attempts the protected milestone journey",
+        "then": "The operation is denied without protected data disclosure"
+      }
+    ],
+    "evidence_requirements": [
+      "Exact mission ID, entity ID, candidate or integration SHA, command or scenario, zero exit code, environment fingerprint, PASS observed result, timezone timestamp, artifact path and SHA-256, and criterion IDs"
+    ]
+  },
+  "security": {
+    "data_classification": "personal",
+    "risk_triggers": [
+      "authentication",
+      "ownership authorisation",
+      "tenant isolation",
+      "user-facing state flow"
+    ],
+    "threat_scenarios": [
+      {
+        "id": "EXAMPLE_PROD-TH-1",
+        "name": "Unauthorized authority crossing",
+        "scenario": "An unauthorized actor attempts to cross a declared ownership or authority boundary",
+        "attack_surface": "Ownership and authorization boundary",
+        "expected_control": "The system denies the action and emits no protected content or unsafe side effect"
+      },
+      {
+        "id": "EXAMPLE_PROD-TH-2",
+        "name": "Interrupted write atomicity",
+        "scenario": "Malformed or interrupted input attempts to leave partially committed state",
+        "attack_surface": "Transactional persistence boundary",
+        "expected_control": "The operation fails atomically and the user can safely retry or recover"
+      }
+    ],
+    "authority_decisions": [
+      {
+        "id": "D1",
+        "statement": "Server-side identity is the only authority for project ownership",
+        "status": "locked"
+      }
+    ],
+    "derived_risk": "R3",
+    "mandatory_adversarial_review": true,
+    "adversarial_lens": "kryptonite"
+  },
+  "intake": {
+    "schema_version": 1,
+    "readiness_score": 100,
+    "user_authored_intent": true
+  }
+}
