@@ -15,6 +15,7 @@ import math
 import os
 import re
 import secrets
+import stat
 import subprocess
 import tempfile
 import threading
@@ -25,8 +26,42 @@ from typing import Any, Iterable
 
 SCHEMA_VERSION = 2
 _PROCESS_KEY_ATTR = "_hermes_dark_factory_process_key"
+
+
+def _load_or_create_attestation_key() -> bytes:
+    """Return the profile-scoped key used to attest durable factory state."""
+
+    hermes_home = Path(os.environ.get("HERMES_HOME") or Path.home() / ".hermes").expanduser()
+    key_dir = hermes_home / "plugin-data" / "dark-factory"
+    key_path = key_dir / "review-attestation.key"
+    key_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+
+    try:
+        info = key_path.lstat()
+    except FileNotFoundError:
+        key = secrets.token_bytes(32)
+        try:
+            descriptor = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            return _load_or_create_attestation_key()
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(key)
+            handle.flush()
+            os.fsync(handle.fileno())
+        return key
+
+    if not stat.S_ISREG(info.st_mode) or key_path.is_symlink():
+        raise RuntimeError("Dark Factory attestation key must be a regular file")
+    if info.st_mode & 0o077:
+        raise RuntimeError("Dark Factory attestation key permissions must be 0600")
+    key = key_path.read_bytes()
+    if len(key) != 32:
+        raise RuntimeError("Dark Factory attestation key must contain exactly 32 bytes")
+    return key
+
+
 if not hasattr(builtins, _PROCESS_KEY_ATTR):
-    setattr(builtins, _PROCESS_KEY_ATTR, secrets.token_bytes(32))
+    setattr(builtins, _PROCESS_KEY_ATTR, _load_or_create_attestation_key())
 _PROCESS_REVIEW_KEY = getattr(builtins, _PROCESS_KEY_ATTR)
 _PROCESS_KEY_OVERRIDE_LOCK = threading.RLock()
 MIN_ATTESTATION_KEY_BYTES = 32
