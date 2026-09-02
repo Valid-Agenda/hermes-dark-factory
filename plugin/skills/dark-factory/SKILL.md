@@ -1,13 +1,13 @@
 ---
 name: dark-factory
-version: 0.3.0
-description: Use when turning a product specification into autonomous software delivery across milestones. Guide the user through personas and structured stories, select authenticated active-profile models by role, project the durable graph to Beads when selected, force independent test/security gates, preserve one integrator, and keep edit/test loops inside coherent slices.
+version: 0.4.0
+description: Use when turning a product specification or imported manifest into bounded Beads-backed software delivery across milestones. Guide the user through strict preflight, authenticated role models, independent test/security gates, one integrator, and coherent functional slices from chat or the desktop workspace.
 author: Hermes Agent
 license: MIT
 metadata:
   hermes:
-    tags: [software-factory, autonomous-development, milestones, kanban, testing, orchestration]
-    related_skills: [hermes-agent, kanban-orchestrator, subagent-driven-development]
+    tags: [software-factory, autonomous-development, milestones, beads, testing, orchestration]
+    related_skills: [hermes-agent, subagent-driven-development]
 ---
 # Hermes Dark Factory
 
@@ -26,7 +26,7 @@ Use for:
 - Building a product or major capability from an approved specification.
 - A multi-hour or multi-session implementation with meaningful milestones.
 - Repeated implement → test → remediate → test loops.
-- A project where Kanban has begun tracking edits rather than outcomes.
+- A project where task activity has begun tracking edits rather than outcomes.
 - Work that needs durable recovery, evidence, and limited parallelism.
 
 Do not use for:
@@ -51,7 +51,7 @@ Do not use a routing-only orchestrator that is forbidden from understanding or t
 3. **Functional slice** — an independently reviewable outcome with one risk boundary.
 4. **Micro-step** — an edit, failing test, reviewer comment, lint fix, or debugging action inside a slice.
 
-Mission, milestone, and functional slice may be durable records. Micro-steps belong in the active session’s todo/checklist and Git diff. Never create a Kanban card for each micro-step.
+Mission, milestone, and functional slice may be durable records. Micro-steps belong in the active session’s todo/checklist and Git diff. Never create a Beads item for each micro-step.
 
 ### 3. Milestones set validation frequency
 
@@ -81,13 +81,46 @@ Each milestone has observable acceptance criteria and scenario receipts. Prefer 
 
 The builder may write focused tests. The builder does not get to redefine the milestone because its tests pass.
 
+## Chat and desktop entry points
+
+This skill is the chat-side operating contract for the installed `dark-factory`
+plugin. A user can invoke `/skill dark-factory:dark-factory` and describe the
+product in the same message or follow the bounded command sequence below; the
+agent must use the Dark Factory tools rather than inventing an alternate
+project ledger.
+
+```text
+/skill dark-factory:dark-factory                         # start guided intake from chat
+/skill dark-factory:dark-factory import /abs/spec.json   # import canonical schema-v2 manifest
+/skill dark-factory:dark-factory preflight                # report blocking intake/model/Beads gates
+/skill dark-factory:dark-factory compile                  # publish manifest + pristine state pair
+/skill dark-factory:dark-factory plan                     # inspect the Beads graph plan
+/skill dark-factory:dark-factory execute                  # continue only through authorized gates
+/skill dark-factory:dark-factory status                   # report acceptance progress and blockers
+```
+
+The slash invocation is skill-driven, so it keeps the normal Hermes model,
+session, tool, and human-approval context. It is not a bypass shell command.
+`execute` means inspect `factory_next`, work one startable slice at a time,
+run the declared evidence, obtain independent review, and use the guarded
+transition/apply tools. Never interpret it as permission to publish, deploy,
+spend, contact third parties, or apply a Beads graph without the applicable
+human/integrator gate.
+
+For a manifest import, call `factory_import_manifest` with either
+`manifest_path` or an inline `manifest` object. The import must be schema-v2,
+Beads-backed, active-profile-model-compatible, and targeted at a new/pristine
+workspace. It creates `manifest.json` and `state.json` atomically but does not
+apply the Beads graph. A native Hermes project workspace is authoritative when
+the desktop route supplies `project_id`.
+
 ## Before execution: guided preflight, then compile
 
 Use the Dark Factory plugin page or `factory_preflight` before authoring work. The active profile's Hermes model inventory is the authority: users choose provider/model references for **integrator, builder, verifier, adversary, and holdout** roles, while credentials remain in Hermes auth storage and never enter the setup, manifest, evidence, or Git.
 
 The default `sol-luna` policy fills blank execution roles only when the exact authenticated models are available: Sol 900k for the orchestrator/integrator and Luna for the worker/builder. It never overwrites explicit selections and never infers verifier, adversary, or holdout models.
 
-When `execution.graph_backend` is `beads`, use `factory_beads_plan` to inspect the mission → milestone epic → functional-slice task graph, then let the integrator call `factory_beads_apply`. Parent links are organizational; real ordering uses dependent→prerequisite `blocks` edges. Beads owns graph/status/assignment; the Dark Factory ledger owns acceptance/evidence/review/WIP. Never mirror one mission into both Beads and Kanban as competing status authorities, and never create micro-beads for debugging, test fixes, remediation, or review comments.
+Beads is mandatory and is the only graph backend. Use `factory_beads_plan` to inspect the mission → milestone epic → functional-slice task graph, then let the integrator call `factory_beads_apply` only when graph mode is `apply` and the explicit authorization/readiness gates pass. Parent links are organizational; real ordering uses dependent→prerequisite `blocks` edges. Beads owns durable graph/status/assignment; the Dark Factory ledger owns acceptance/evidence/review/WIP. Never create micro-beads for debugging, test fixes, remediation, or review comments.
 
 Preflight is fail-closed. It must have:
 
@@ -120,7 +153,7 @@ Before coding begins, explicitly decide:
 - User/system scenarios that prove each milestone.
 - Security/privacy/cost/publish risk triggers.
 - Shared interfaces and ownership decisions.
-- Local/remote/HITL limits.
+- Local/remote/HITL limits and the explicit Beads graph-write authorization.
 - Retry, time, and spend budgets.
 
 If those decisions are not ready, the factory is not ready.
@@ -194,27 +227,43 @@ Trigger `replan_required` when any occurs:
 
 Replanning means revisiting the slice boundary, dependency, interface, acceptance method, model/tool choice, or product decision. It does not mean rewriting the same card with stronger adjectives.
 
-## Kanban policy
+## Beads graph policy
 
-Kanban is a durability and dependency tool, not the default implementation loop.
+Beads is the required durable coordination backend. It is deliberately narrow:
+one mission graph contains the mission, milestones, and functional slices;
+ordering is expressed through dependency edges; and the graph is projected
+only after the Dark Factory manifest passes validation. Dark Factory's signed
+state ledger remains authoritative for acceptance, evidence, review, WIP,
+retry budgets, and replanning.
 
-Recommended project settings:
+Do not mirror a mission into Hermes Kanban, offer local/Kanban/both choices, or
+create a separate coordination record for each micro-step. For a visual board
+or dependency graph, recommend [Bead Me Up Scotty](https://github.com/brendan-appstart/bead-me-up-scotty), a separate local UI over `bd`; it is an optional viewer, not a replacement for the Dark Factory ledger or Beads CLI.
 
-```yaml
-kanban:
-  auto_decompose: false
-  auto_promote_children: false
-  auto_subscribe_on_create: false
-  max_in_progress: 2
-  max_in_progress_per_profile: 1
-  failure_limit: 2
+### Beads setup prerequisite
+
+Installing the Dark Factory plugin does **not** install the Beads CLI. Before
+using a project for compilation or graph writes, the operator must install and
+verify the supported `bd` version in the same environment that launches
+Hermes, then initialize the target workspace explicitly:
+
+```bash
+npm install -g @beads/bd@1.2.2
+command -v bd
+bd --version                 # must report 1.2.2
+cd /absolute/path/to/project
+bd init                      # creates this project's .beads/ directory
 ```
 
-Use Kanban only when work must survive the current session, has a genuine external dependency/owner, needs a human gate, or benefits from an audit trail beyond Git and the mission state.
+On WSL, run the install and verification inside the same distribution and user
+environment as Hermes. If `bd` is visible only in an interactive shell, fix
+the PATH inherited by Hermes before retrying preflight. Do not use
+`bd init --global` or `bd init --shared-server` unless an explicitly shared
+database is intended; the normal Dark Factory boundary is one project-local
+`.beads` store. Dark Factory preflight inspects readiness and never runs
+`bd init` implicitly.
 
-One card equals one meaningful functional slice or genuine independent lane. Do not pre-create a ritual implement → spec review → quality review → fix → re-review chain for every slice.
-
-### Durable card contract
+### Durable Beads item contract
 
 Every factory-controlled card body must contain:
 
@@ -244,7 +293,9 @@ Stop / escalate:
 - Second materially similar failure → replan; do not spawn a child fix card
 ```
 
-Run `factory_lint_card` before creating a durable card. In opt-in strict mode the plugin blocks uncontracted `kanban_create` calls.
+Run `factory_lint_card` before creating a durable work item. The plugin's
+legacy `kanban_*` guard remains a deny rule so another tool cannot silently
+turn Hermes Kanban into a competing Dark Factory authority.
 
 ## Delegation contract
 

@@ -71,6 +71,7 @@ MODEL_ROLES = ("integrator", "builder", "verifier", "adversary", "holdout")
 NON_BUILDER_ROLES = ("verifier", "adversary", "holdout")
 MODEL_REFERENCE_FIELDS = frozenset({"provider", "model"})
 MODEL_POLICY_FIELDS = frozenset({"preset"})
+SYSTEM_PROMPT_FIELDS = frozenset(MODEL_ROLES)
 EXECUTION_FIELDS = frozenset({
     "graph_backend",
     "graph_mode",
@@ -148,6 +149,7 @@ def default_setup() -> dict[str, Any]:
         },
         "models": {role: {"provider": "", "model": ""} for role in MODEL_ROLES},
         "model_policy": {"preset": DEFAULT_PRESET_ID},
+        "system_prompts": {role: "" for role in MODEL_ROLES},
         "execution": {
             "graph_backend": "beads",
             "graph_mode": "plan",
@@ -290,6 +292,14 @@ def _guided_schema_issues(value: Any) -> list[tuple[str, str]]:
                     (f"model_policy.{field}", f"unknown model_policy field {field!r}")
                 )
 
+    system_prompts = value.get("system_prompts")
+    if system_prompts is not None and not isinstance(system_prompts, dict):
+        issues.append(("system_prompts", "system_prompts must be an object keyed by model role"))
+    elif isinstance(system_prompts, dict):
+        for role in system_prompts:
+            if role not in SYSTEM_PROMPT_FIELDS:
+                issues.append((f"system_prompts.{role}", f"unknown system prompt role {role!r}"))
+
     execution = value.get("execution")
     if isinstance(execution, dict):
         for field in execution:
@@ -343,6 +353,7 @@ def _normalise_setup(value: Any, *, reject_unknown: bool) -> dict[str, Any]:
     security = merged.get("security") if isinstance(merged.get("security"), dict) else {}
     models = merged.get("models") if isinstance(merged.get("models"), dict) else {}
     model_policy = merged.get("model_policy") if isinstance(merged.get("model_policy"), dict) else {}
+    system_prompts = merged.get("system_prompts") if isinstance(merged.get("system_prompts"), dict) else {}
     execution = merged.get("execution") if isinstance(merged.get("execution"), dict) else {}
     reasoning_effort = execution.get("reasoning_effort") if isinstance(execution.get("reasoning_effort"), dict) else {}
     policy = merged.get("policy") if isinstance(merged.get("policy"), dict) else {}
@@ -408,6 +419,10 @@ def _normalise_setup(value: Any, *, reject_unknown: bool) -> dict[str, Any]:
             for role in MODEL_ROLES
         },
         "model_policy": {"preset": str(model_policy.get("preset") or "").strip().lower() or DEFAULT_PRESET_ID},
+        "system_prompts": {
+            role: str(system_prompts.get(role) or "").strip()
+            for role in MODEL_ROLES
+        },
         "execution": {
             # Persist and compile the same canonical values that readiness
             # evaluates. A whitespace-only directory must remain the empty
@@ -715,7 +730,7 @@ def validate_intake(setup_value: Any, model_catalog: Any = None) -> dict[str, An
     reasoning = execution.get("reasoning_effort") if isinstance(execution.get("reasoning_effort"), dict) else {}
     graph_backend = _text(execution.get("graph_backend"))
     execution_ok = (
-        graph_backend in {"beads", "local"}
+        graph_backend == "beads"
         and _text(execution.get("graph_mode")) in {"plan", "apply"}
         and _text(reasoning.get("orchestrator")) in {"low", "medium", "high"}
         and _text(reasoning.get("worker")) in {"low", "medium", "high"}
@@ -924,6 +939,7 @@ def compile_manifest(setup_value: Any, model_catalog: Any = None) -> dict[str, A
         "policy": copy.deepcopy(setup["policy"]),
         "models": copy.deepcopy(setup["models"]),
         "model_policy": manifest_model_policy(_text(setup["model_policy"].get("preset"))),
+        "system_prompts": copy.deepcopy(setup["system_prompts"]),
         "execution": copy.deepcopy(setup["execution"]),
         "testing": copy.deepcopy(testing),
         "security": {
@@ -1202,6 +1218,107 @@ def compile_to_workspace(setup_value: Any, model_catalog: Any = None) -> dict[st
         _atomic_write_json(plugin_data_dir() / "launch.json", launch)
     except OSError as exc:
         metadata_warnings.append(f"factory armed but profile metadata could not be saved: {exc}")
+    if metadata_warnings:
+        launch["warnings"] = metadata_warnings
+    return {"manifest": manifest, **launch}
+
+
+def import_manifest_to_workspace(
+    manifest_value: Any,
+    *,
+    workspace_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Import one canonical schema-v2 manifest as a pristine factory pair.
+
+    Import is deliberately not compilation: the manifest is preserved as the
+    authored execution contract, while the initial state is created locally.
+    Beads remains the only graph backend, and an existing/progressed pair is
+    never overwritten. Callers must perform active-profile model checks before
+    invoking this side-effecting function.
+    """
+    if not isinstance(manifest_value, dict):
+        raise FactoryError("manifest import requires a JSON object")
+    manifest = copy.deepcopy(manifest_value)
+    if _credential_shaped_paths(manifest):
+        raise FactoryError("manifest import contains credential-shaped data; store only provider/model references")
+    if workspace_path is not None:
+        requested = _normalise_workspace_path(workspace_path)
+        if not requested:
+            raise FactoryError("manifest import workspace_path must be a non-empty absolute path")
+        mission = manifest.get("mission")
+        if not isinstance(mission, dict):
+            raise FactoryError("manifest import requires a mission object")
+        mission["workspace_path"] = requested
+    execution = manifest.get("execution")
+    if not isinstance(execution, dict) or execution.get("graph_backend") != "beads":
+        raise FactoryError("manifest import requires execution.graph_backend=beads")
+    check = validate_manifest(manifest)
+    if not check["valid"]:
+        raise FactoryError("manifest import rejected: " + "; ".join(check.get("errors", [])))
+
+    workspace = Path(manifest["mission"]["workspace_path"]).expanduser().resolve()
+    if not workspace.exists():
+        workspace.mkdir(parents=False, exist_ok=False)
+    if not workspace.is_dir():
+        raise FactoryError("manifest import workspace_path is not a directory")
+    factory_dir = workspace / ".hermes" / "factory"
+    manifest_path = factory_dir / "manifest.json"
+    state_path = factory_dir / "state.json"
+    state = initial_state(manifest)
+    with _state_file_lock(state_path):
+        manifest_exists = manifest_path.exists()
+        state_exists = state_path.exists()
+        if manifest_exists != state_exists:
+            raise FactoryError(
+                "factory manifest/state pair is incomplete; preserve the workspace and use recovery "
+                "or an explicit audited reset before importing"
+            )
+        if manifest_exists:
+            try:
+                existing_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+                existing_state = json.loads(state_path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+                raise FactoryError(
+                    "existing factory manifest/state pair is unreadable; preserve it and use recovery "
+                    "or an explicit audited reset before importing"
+                ) from exc
+            if not isinstance(existing_manifest, dict) or not isinstance(existing_state, dict):
+                raise FactoryError(
+                    "existing factory manifest/state pair has an incompatible shape; preserve it and use recovery "
+                    "or an explicit audited reset before importing"
+                )
+            existing_check = validate_manifest(existing_manifest)
+            if not existing_check["valid"]:
+                raise FactoryError(
+                    "existing factory manifest is invalid; preserve it and use recovery or an explicit audited reset"
+                )
+            if existing_manifest != manifest or _manifest_digest(existing_manifest) != _manifest_digest(manifest):
+                raise FactoryError(
+                    "existing factory manifest does not exactly match this import; preserve it and use recovery or an explicit audited reset"
+                )
+            _validate_state_compatibility(existing_manifest, existing_state)
+            if not _state_is_pristine(existing_state, existing_manifest):
+                raise FactoryError(
+                    "refusing to overwrite non-pristine factory state; use a new mission/workspace or an explicit audited reset"
+                )
+        _publish_factory_pair(factory_dir, manifest, state)
+
+    launch = {
+        "status": "armed",
+        "source": "manifest_import",
+        "manifest_path": str(manifest_path),
+        "state_path": str(state_path),
+        "workspace_path": str(workspace),
+        "models": manifest["models"],
+        "model_policy": manifest["model_policy"],
+        "execution": manifest["execution"],
+        "credentials_stored": False,
+    }
+    metadata_warnings: list[str] = []
+    try:
+        _atomic_write_json(plugin_data_dir() / "launch.json", launch)
+    except OSError as exc:
+        metadata_warnings.append(f"factory imported but profile metadata could not be saved: {exc}")
     if metadata_warnings:
         launch["warnings"] = metadata_warnings
     return {"manifest": manifest, **launch}

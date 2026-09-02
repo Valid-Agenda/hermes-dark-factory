@@ -35,6 +35,35 @@ _BEADS_VERSION_OUTPUT = re.compile(
 )
 
 
+def _resolve_bd_executable(value: str) -> str:
+    """Resolve bd for desktop-launched WSL processes without broad PATH use."""
+    requested = str(value or "bd").strip() or "bd"
+    candidates: list[Path] = []
+    if os.sep in requested or (os.altsep and os.altsep in requested):
+        candidates.append(Path(requested).expanduser())
+    else:
+        found = shutil.which(requested)
+        if found:
+            candidates.append(Path(found))
+        # Hermes desktop may be launched outside the interactive shell that
+        # prepends Bun/Go user bins to PATH. Keep this bounded to user-owned,
+        # conventional install locations; never search the whole filesystem.
+        home = Path.home()
+        candidates.extend([
+            home / ".bun" / "bin" / requested,
+            home / ".local" / "bin" / requested,
+            home / "go" / "bin" / requested,
+        ])
+    for candidate in candidates:
+        try:
+            resolved = candidate.expanduser().resolve()
+        except (OSError, RuntimeError, ValueError):
+            continue
+        if resolved.is_file() and os.access(resolved, os.X_OK):
+            return str(resolved)
+    return ""
+
+
 def _canonical_json_text(value: Any) -> str:
     """Return deterministic UTF-8 JSON text suitable for Beads string metadata."""
     return json.dumps(
@@ -443,7 +472,7 @@ def preflight_beads(
     authorize_isolated: bool = False,
 ) -> dict[str, Any]:
     path = Path(beads_dir).expanduser().resolve()
-    executable = str(Path(bd_executable).expanduser()) if os.sep in bd_executable else (shutil.which(bd_executable) or "")
+    executable = _resolve_bd_executable(bd_executable)
     if not executable or not Path(executable).is_file() or not os.access(executable, os.X_OK):
         raise BeadsAdapterError("Beads executable is unavailable")
     # A directory name is not proof of an initialized store.  In particular,

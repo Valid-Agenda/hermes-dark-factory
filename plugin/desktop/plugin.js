@@ -12,6 +12,12 @@ import { jsx, jsxs } from 'react/jsx-runtime'
 
 const PLUGIN_ID = 'dark-factory'
 const ROUTE = '/dark-factory'
+const PROJECT_ROUTE = `${ROUTE}/project`
+const SETTINGS_ROUTE = `${ROUTE}/settings`
+const SETUP_ROUTE = `${ROUTE}/setup`
+const BEAD_ME_UP_URL = 'https://github.com/brendan-appstart/bead-me-up-scotty'
+let selectedProjectId = ''
+let openExternal = () => false
 const SOL_LUNA_PRESET = 'sol-luna'
 const SOL_ORCHESTRATOR = { provider: 'openai-codex', model: 'gpt-5.6-sol-900k' }
 const LUNA_WORKER = { provider: 'openai-codex', model: 'gpt-5.6-luna' }
@@ -108,6 +114,7 @@ function normaliseSetup(value, catalog = {}) {
   const security = record(source.security)
   const models = record(source.models)
   const modelPolicy = record(source.model_policy)
+  const systemPrompts = record(source.system_prompts)
   const execution = record(source.execution)
   const reasoningEffort = record(execution.reasoning_effort)
   const exactModels = {}
@@ -217,8 +224,9 @@ function normaliseSetup(value, catalog = {}) {
     },
     models: exactModels,
     model_policy: { preset: text(modelPolicy.preset) || SOL_LUNA_PRESET },
+    system_prompts: Object.fromEntries(ROLES.map(([role]) => [role, text(systemPrompts[role])])),
     execution: {
-      graph_backend: execution.graph_backend === 'local' || execution.backend === 'local' ? 'local' : 'beads',
+      graph_backend: 'beads',
       graph_mode: text(execution.graph_mode) || 'plan',
       beads_directory: text(execution.beads_directory || execution.beads_dir),
       beads_isolated_authorized: execution.beads_isolated_authorized === true || execution.allow_init === true,
@@ -258,6 +266,134 @@ function normaliseCatalog(value) {
       })
       .filter(provider => provider.slug && provider.models.length)
   }
+}
+
+function defaultConfig() {
+  return {
+    schema_version: 1,
+    models: Object.fromEntries(ROLES.map(([role]) => [role, { provider: '', model: '' }])),
+    model_policy: { preset: SOL_LUNA_PRESET },
+    system_prompts: Object.fromEntries(ROLES.map(([role]) => [role, ''])),
+    coordination: {
+      mode: 'beads',
+      beads_directory: '',
+      beads_isolated_authorized: false
+    },
+    reasoning_effort: { orchestrator: 'high', worker: 'medium' },
+    policy: defaultPolicy({})
+  }
+}
+
+function normaliseConfig(value) {
+  const source = record(value)
+  const defaults = defaultConfig()
+  const models = record(source.models)
+  const prompts = record(source.system_prompts)
+  const coordination = record(source.coordination)
+  const reasoning = record(source.reasoning_effort)
+  return {
+    schema_version: 1,
+    models: Object.fromEntries(ROLES.map(([role]) => {
+      const assignment = record(models[role])
+      return [role, { provider: canonicalProviderSlug(assignment.provider), model: canonicalString(assignment.model) }]
+    })),
+    model_policy: { preset: canonicalString(record(source.model_policy).preset) || defaults.model_policy.preset },
+    system_prompts: Object.fromEntries(ROLES.map(([role]) => [role, text(prompts[role])])),
+    coordination: {
+      mode: 'beads',
+      beads_directory: text(coordination.beads_directory),
+      beads_isolated_authorized: coordination.beads_isolated_authorized === true
+    },
+    reasoning_effort: {
+      orchestrator: ['low', 'medium', 'high'].includes(text(reasoning.orchestrator).toLowerCase()) ? text(reasoning.orchestrator).toLowerCase() : defaults.reasoning_effort.orchestrator,
+      worker: ['low', 'medium', 'high'].includes(text(reasoning.worker).toLowerCase()) ? text(reasoning.worker).toLowerCase() : defaults.reasoning_effort.worker
+    },
+    policy: defaultPolicy(source.policy)
+  }
+}
+
+function modelValue(assignment) {
+  const value = record(assignment)
+  return value.provider && value.model ? `${value.provider}::${value.model}` : ''
+}
+
+function modelAssignment(value) {
+  const [provider, ...modelParts] = text(value).split('::')
+  return { provider: provider || '', model: modelParts.join('::') || '' }
+}
+
+function modelEditor({ models, catalog, onChange }) {
+  const refs = catalogModelRefs(catalog)
+  const options = [
+    jsx('option', { value: '', children: 'Automatic / preset default' }),
+    ...refs.map(item => jsx('option', { value: `${item.provider}::${item.model}`, children: `${item.provider} / ${item.model}` }))
+  ]
+  return jsxs('div', {
+    className: 'grid gap-3 md:grid-cols-2',
+    children: ROLES.map(([role, label, hint]) => jsx(Field, {
+      label,
+      hint,
+      children: jsx('select', {
+        className: selectClass,
+        value: modelValue(record(models)[role]),
+        onChange: event => onChange({ ...record(models), [role]: modelAssignment(event.target.value) }),
+        children: options
+      })
+    }))
+  })
+}
+
+function promptEditor({ prompts, onChange }) {
+  return jsxs('div', {
+    className: 'grid gap-3 lg:grid-cols-2',
+    children: ROLES.map(([role, label, hint]) => jsx(Field, {
+      label: `${label} system prompt`,
+      hint: `${hint} Leave blank to use the role's runtime default.`,
+      children: jsx(Textarea, {
+        className: 'min-h-24 resize-y',
+        value: text(record(prompts)[role]),
+        maxLength: 16000,
+        onChange: event => onChange({ ...record(prompts), [role]: event.target.value })
+      })
+    }))
+  })
+}
+
+function coordinationEditor({ coordination, onChange }) {
+  const current = record(coordination)
+  const update = (key, value) => onChange({ ...current, [key]: value })
+  return jsxs('div', {
+    className: 'grid gap-3 md:grid-cols-2',
+    children: [
+      jsx(Field, {
+        label: 'Coordination mode',
+        hint: 'Beads is the required canonical project ledger for Dark Factory graph writes.',
+        children: jsx('select', {
+          className: selectClass,
+          value: 'beads',
+          disabled: true,
+          'aria-label': 'Coordination mode',
+          children: [jsx('option', { value: 'beads', children: 'Beads graph (required)' })]
+        })
+      }),
+      jsx(Field, {
+        label: 'Beads directory',
+        hint: 'Blank resolves to <workspace>/.beads. Relative paths are workspace-scoped.',
+        children: jsx(Input, { value: text(current.beads_directory), placeholder: '.beads', 'aria-label': 'Beads directory', onChange: event => update('beads_directory', event.target.value) })
+      }),
+      jsx(Field, {
+        label: 'Authorize Beads graph writes',
+        hint: 'Required before any project can compile or initialize its Beads graph.',
+        children: jsxs('label', {
+          className: 'flex h-8 items-center gap-2 text-xs text-(--ui-text-secondary)',
+          children: [
+            jsx('input', { type: 'checkbox', checked: current.beads_isolated_authorized === true, 'aria-label': 'Authorize Beads graph writes', onChange: event => update('beads_isolated_authorized', event.target.checked) }),
+            'I explicitly authorize Beads graph writes'
+          ]
+        })
+      })
+    ]
+  })
 }
 
 function setAtPath(source, path, value) {
@@ -589,7 +725,306 @@ function ReadinessPanel({ readiness, dirty, compileResult }) {
   })
 }
 
-function DarkFactoryPage({ rest }) {
+function statusBadge(status) {
+  const value = text(status) || 'unknown'
+  const tone = value === 'completed'
+    ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+    : value === 'active'
+      ? 'border-sky-500/30 bg-sky-500/10 text-sky-300'
+      : value === 'blocked' || value === 'error'
+        ? 'border-destructive/30 bg-destructive/10 text-destructive'
+        : 'border-(--ui-stroke-secondary) bg-(--ui-bg-secondary) text-(--ui-text-secondary)'
+  return jsx('span', { className: `inline-flex items-center rounded-full border px-2 py-0.5 text-[0.6875rem] font-medium uppercase tracking-wide ${tone}`, children: value.replaceAll('_', ' ') })
+}
+
+function metric(label, value, hint) {
+  return jsxs('div', {
+    className: 'rounded-[5px] border border-(--ui-stroke-secondary) bg-(--ui-bg-secondary) p-3',
+    children: [
+      jsx('div', { className: 'text-[0.6875rem] uppercase tracking-wide text-(--ui-text-tertiary)', children: label }),
+      jsx('div', { className: 'mt-1 text-lg font-semibold text-(--ui-text-primary)', children: value }),
+      hint ? jsx('div', { className: 'mt-1 text-[0.6875rem] text-(--ui-text-tertiary)', children: hint }) : null
+    ]
+  })
+}
+
+function FactoryProjectsPage({ rest }) {
+  const [projects, setProjects] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [newName, setNewName] = useState('')
+  const [newPath, setNewPath] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [reloadToken, setReloadToken] = useState(0)
+
+  useEffect(() => {
+    let live = true
+    setLoading(true)
+    rest('/projects')
+      .then(payload => {
+        if (!live) return
+        const value = record(payload)
+        setProjects(list(value.projects))
+        setError('')
+      })
+      .catch(cause => {
+        if (live) setError(errorText(cause))
+      })
+      .finally(() => {
+        if (live) setLoading(false)
+      })
+    return () => { live = false }
+  }, [rest, reloadToken])
+
+  const createProject = async () => {
+    const name = text(newName).trim()
+    const path = text(newPath).trim()
+    if (!name || !path) {
+      setError('Provide both a project name and an existing workspace path.')
+      return
+    }
+    setCreating(true)
+    setError('')
+    try {
+      const profile = text(host.state.profile?.get?.()) || 'default'
+      const response = record(await host.request('projects.create', {
+        name,
+        folders: [path],
+        primary_path: path,
+        use: true,
+        profile
+      }))
+      const created = record(response.project || response)
+      if (!text(created.id)) throw new Error('Hermes did not return the created project id.')
+      selectedProjectId = text(created.id)
+      host.notify({ kind: 'success', message: `Project ${text(created.name) || name} is ready for Dark Factory configuration.` })
+      host.navigate(PROJECT_ROUTE)
+    } catch (cause) {
+      const message = errorText(cause)
+      setError(message)
+      host.notify({ kind: 'error', title: 'Could not create Hermes project', message })
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  const openProject = project => {
+    selectedProjectId = text(record(project).id)
+    host.navigate(PROJECT_ROUTE)
+  }
+
+  if (loading) {
+    return jsxs('div', { className: 'flex h-full items-center justify-center p-8 text-sm text-(--ui-text-tertiary)', children: [jsx('span', { className: 'mr-2 inline-block size-3 animate-spin rounded-full border-2 border-(--ui-stroke-secondary) border-t-primary' }), 'Loading Dark Factory projects…'] })
+  }
+
+  return jsxs('div', {
+    className: 'h-full overflow-y-auto bg-(--ui-bg-primary) text-foreground',
+    children: [
+      jsxs('header', {
+        className: 'sticky top-0 z-10 border-b border-(--ui-stroke-secondary) bg-(--ui-bg-primary)/95 px-5 py-3 backdrop-blur',
+        children: [
+          jsxs('div', { className: 'mx-auto flex max-w-[92rem] flex-wrap items-center justify-between gap-3', children: [
+            jsxs('div', { children: [jsx('h1', { className: 'text-base font-semibold text-(--ui-text-primary)', children: 'Dark Factory projects' }), jsx('p', { className: 'mt-0.5 text-xs text-(--ui-text-tertiary)', children: 'Return here for every build. Each Hermes project keeps its own intake, coordination choices, progress, and evidence.' })] }),
+            jsxs('div', { className: 'flex items-center gap-2', children: [jsx(Button, { type: 'button', variant: 'secondary', onClick: () => host.navigate(SETTINGS_ROUTE), children: 'Global defaults' }), jsx(Button, { type: 'button', variant: 'ghost', onClick: () => setReloadToken(value => value + 1), children: 'Refresh' })] })
+          ] }),
+          error ? jsx('div', { className: 'mx-auto mt-3 max-w-[92rem] rounded-[4px] border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive', children: error }) : null
+        ]
+      }),
+      jsxs('main', { className: 'mx-auto grid max-w-[92rem] gap-4 p-5 xl:grid-cols-[minmax(0,1fr)_20rem]', children: [
+        jsxs('section', { className: 'flex min-w-0 flex-col gap-3', children: [
+          projects.length
+            ? projects.map(project => {
+                const value = record(project)
+                const progress = record(value.progress)
+                return jsxs('button', { type: 'button', className: 'w-full rounded-[6px] border border-(--ui-stroke-secondary) bg-(--ui-bg-secondary) p-4 text-left transition-colors hover:border-ring', onClick: () => openProject(value), children: [
+                  jsxs('div', { className: 'flex flex-wrap items-start justify-between gap-3', children: [
+                    jsxs('div', { children: [jsx('div', { className: 'text-sm font-semibold text-(--ui-text-primary)', children: text(value.name) || text(value.slug) || 'Unnamed project' }), jsx('div', { className: 'mt-1 break-all text-[0.6875rem] text-(--ui-text-tertiary)', children: text(value.primary_path) || 'No workspace path' })] }),
+                    statusBadge(progress.status)
+                  ] }),
+                  jsxs('div', { className: 'mt-4 flex items-center gap-3', children: [jsx('div', { className: 'h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-(--ui-stroke-secondary)', children: jsx('div', { className: 'h-full rounded-full bg-primary transition-all', style: { width: `${Math.max(0, Math.min(100, Number(progress.percent) || 0))}%` } }) }), jsx('span', { className: 'w-10 text-right text-xs font-medium text-(--ui-text-secondary)', children: `${Number(progress.percent) || 0}%` })] }),
+                  jsxs('div', { className: 'mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[0.6875rem] text-(--ui-text-tertiary)', children: [jsx('span', { children: `${Number(progress.completed_milestones) || 0}/${Number(progress.total_milestones) || 0} milestones` }), jsx('span', { children: `${Number(progress.completed_slices) || 0}/${Number(progress.total_slices) || 0} slices` }), jsx('span', { children: `${text(record(value.coordination).mode) || 'beads'} coordination` }), value.config?.has_overrides ? jsx('span', { className: 'text-primary', children: 'project overrides' }) : null] })
+                ] }, text(value.id))
+              })
+            : jsxs('div', { className: 'rounded-[6px] border border-dashed border-(--ui-stroke-secondary) p-8 text-center', children: [jsx('div', { className: 'text-sm font-medium text-(--ui-text-primary)', children: 'No Hermes projects yet' }), jsx('div', { className: 'mx-auto mt-2 max-w-md text-xs leading-5 text-(--ui-text-tertiary)', children: 'Create a named project here or use the native Hermes project picker. The factory will keep configuration and evidence separate for every project.' })] }),
+          jsx('div', { className: 'rounded-[6px] border border-(--ui-stroke-secondary) bg-(--ui-bg-secondary) p-4 text-xs leading-5 text-(--ui-text-secondary)', children: 'Project identity and folder ownership come from Hermes. Dark Factory only adds per-project defaults, acceptance setup, and read-only progress/log views.' })
+        ] }),
+        jsxs('aside', { className: 'flex flex-col gap-3', children: [
+          jsxs('section', { className: 'rounded-[6px] border border-(--ui-stroke-secondary) bg-(--ui-bg-secondary) p-4', children: [jsx('h2', { className: 'text-sm font-semibold text-(--ui-text-primary)', children: 'New project' }), jsx('p', { className: 'mt-1 text-[0.6875rem] leading-4 text-(--ui-text-tertiary)', children: 'This creates a native Hermes project; it does not initialize Beads or write factory state.' }), jsx(Field, { label: 'Name', className: 'mt-3', children: jsx(Input, { value: newName, placeholder: 'Payments portal', onChange: event => setNewName(event.target.value) }) }), jsx(Field, { label: 'Workspace path', hint: 'The folder must already exist.', className: 'mt-3', children: jsx(Input, { value: newPath, placeholder: '/path/to/workspace', 'aria-label': 'Workspace path', onChange: event => setNewPath(event.target.value) }) }), jsx(Button, { type: 'button', className: 'mt-4 w-full', disabled: creating, onClick: createProject, children: creating ? 'Creating…' : 'Create project' })] }),
+          jsx('div', { className: 'rounded-[6px] border border-(--ui-stroke-secondary) p-4 text-[0.6875rem] leading-4 text-(--ui-text-tertiary)', children: 'A project can inherit global model/prompt/coordination defaults or save a sparse override. Resetting overrides returns it to the global policy.' })
+        ] })
+      ] })
+    ]
+  })
+}
+
+function FactorySettingsPage({ rest }) {
+  const [config, setConfig] = useState(() => defaultConfig())
+  const [catalog, setCatalog] = useState(() => normaliseCatalog({}))
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [dirty, setDirty] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let live = true
+    setLoading(true)
+    rest('/global-config')
+      .then(payload => {
+        if (!live) return
+        const value = record(payload)
+        setConfig(normaliseConfig(value.config))
+        setCatalog(normaliseCatalog(value.model_options))
+        setDirty(false)
+        setError('')
+      })
+      .catch(cause => { if (live) setError(errorText(cause)) })
+      .finally(() => { if (live) setLoading(false) })
+    return () => { live = false }
+  }, [rest])
+
+  const update = (path, value) => {
+    setConfig(current => setAtPath(current, path, value))
+    setDirty(true)
+  }
+
+  const save = async () => {
+    setSaving(true)
+    setError('')
+    try {
+      const payload = record(await rest('/global-config', { method: 'PUT', body: { config } }))
+      setConfig(normaliseConfig(payload.config || config))
+      if (payload.model_options) setCatalog(normaliseCatalog(payload.model_options))
+      setDirty(false)
+      host.notify({ kind: 'success', message: 'Dark Factory global defaults saved.' })
+    } catch (cause) {
+      const message = errorText(cause)
+      setError(message)
+      host.notify({ kind: 'error', title: 'Could not save global defaults', message })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return jsxs('div', { className: 'flex h-full items-center justify-center p-8 text-sm text-(--ui-text-tertiary)', children: [jsx('span', { className: 'mr-2 inline-block size-3 animate-spin rounded-full border-2 border-(--ui-stroke-secondary) border-t-primary' }), 'Loading global defaults…'] })
+
+  return jsxs('div', { className: 'h-full overflow-y-auto bg-(--ui-bg-primary) text-foreground', children: [
+    jsxs('header', { className: 'sticky top-0 z-10 border-b border-(--ui-stroke-secondary) bg-(--ui-bg-primary)/95 px-5 py-3 backdrop-blur', children: [jsxs('div', { className: 'mx-auto flex max-w-[92rem] items-center justify-between gap-3', children: [jsxs('div', { children: [jsx('h1', { className: 'text-base font-semibold text-(--ui-text-primary)', children: 'Dark Factory global defaults' }), jsx('p', { className: 'mt-0.5 text-xs text-(--ui-text-tertiary)', children: 'Defaults apply to projects that have no matching override. Credentials are never part of this configuration.' })] }), jsxs('div', { className: 'flex items-center gap-2', children: [jsx(Button, { type: 'button', variant: 'ghost', onClick: () => host.navigate(ROUTE), children: 'Projects' }), jsx(Button, { type: 'button', disabled: saving, onClick: save, children: saving ? 'Saving…' : dirty ? 'Save defaults •' : 'Save defaults' })] })] }), error ? jsx('div', { className: 'mx-auto mt-3 max-w-[92rem] rounded-[4px] border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive', children: error }) : null] }),
+    jsxs('main', { className: 'mx-auto flex max-w-[92rem] flex-col gap-4 p-5', children: [
+      jsx(Section, { id: 'global-coordination', step: '1', title: 'Coordination and bounded policy', description: 'Choose the default coordination surfaces for repeated builds. Project settings can override this without changing other projects.', children: jsx(coordinationEditor, { coordination: config.coordination, onChange: value => update(['coordination'], value) }) }),
+      jsx(Section, { id: 'global-models', step: '2', title: 'Model defaults', description: 'Only authenticated provider/model references are selectable. Blank assignments use the fill-only Sol/Luna preset where available.', children: jsx(modelEditor, { models: config.models, catalog, onChange: value => update(['models'], value) }) }),
+      jsx(Section, { id: 'global-prompts', step: '3', title: 'System prompts', description: 'Role-specific prompt defaults are retained in the compiled mission manifest and can be overridden per project.', children: jsx(promptEditor, { prompts: config.system_prompts, onChange: value => update(['system_prompts'], value) }) }),
+      jsx(Section, { id: 'global-reasoning', step: '4', title: 'Reasoning and retry bounds', description: 'Keep the factory bounded by default. These values are copied into each project only when it inherits global policy.', children: jsxs('div', { className: 'grid gap-3 md:grid-cols-2', children: [jsx(Field, { label: 'Orchestrator reasoning', children: jsx('select', { className: selectClass, value: config.reasoning_effort.orchestrator, onChange: event => update(['reasoning_effort', 'orchestrator'], event.target.value), children: ['low', 'medium', 'high'].map(value => jsx('option', { value, children: value })) }) }), jsx(Field, { label: 'Worker reasoning', children: jsx('select', { className: selectClass, value: config.reasoning_effort.worker, onChange: event => update(['reasoning_effort', 'worker'], event.target.value), children: ['low', 'medium', 'high'].map(value => jsx('option', { value, children: value })) }) })] }) })
+    ] })
+  ] })
+}
+
+function FactoryProjectPage({ rest }) {
+  const projectId = selectedProjectId
+  const [detail, setDetail] = useState(null)
+  const [config, setConfig] = useState(() => defaultConfig())
+  const [overrides, setOverrides] = useState({})
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [dirty, setDirty] = useState(false)
+  const [error, setError] = useState('')
+  const [reloadToken, setReloadToken] = useState(0)
+
+  useEffect(() => {
+    if (!projectId) {
+      setLoading(false)
+      return undefined
+    }
+    let live = true
+    const load = () => {
+      rest(`/projects/${encodeURIComponent(projectId)}`)
+        .then(payload => {
+          if (!live) return
+          const value = record(payload)
+          setDetail(value)
+          setConfig(normaliseConfig(record(value.config).effective))
+          setOverrides(record(value.config).overrides || {})
+          setDirty(false)
+          setError('')
+        })
+        .catch(cause => { if (live) setError(errorText(cause)) })
+        .finally(() => { if (live) setLoading(false) })
+    }
+    load()
+    return () => { live = false }
+  }, [rest, projectId, reloadToken])
+
+  const update = (section, value) => {
+    setConfig(current => ({ ...current, [section]: value }))
+    setOverrides(current => ({ ...record(current), [section]: value }))
+    setDirty(true)
+  }
+
+  const save = async () => {
+    setSaving(true)
+    setError('')
+    try {
+      const payload = await rest(`/projects/${encodeURIComponent(projectId)}/config`, { method: 'PUT', body: { overrides } })
+      const value = record(payload)
+      setDetail(value)
+      setConfig(normaliseConfig(record(value.config).effective))
+      setOverrides(record(value.config).overrides || {})
+      setDirty(false)
+      host.notify({ kind: 'success', message: 'Project Dark Factory overrides saved.' })
+    } catch (cause) {
+      const message = errorText(cause)
+      setError(message)
+      host.notify({ kind: 'error', title: 'Could not save project overrides', message })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const reset = async () => {
+    setSaving(true)
+    try {
+      const payload = await rest(`/projects/${encodeURIComponent(projectId)}/config`, { method: 'PUT', body: { overrides: {} } })
+      const value = record(payload)
+      setDetail(value)
+      setConfig(normaliseConfig(record(value.config).effective))
+      setOverrides({})
+      setDirty(false)
+      host.notify({ kind: 'success', message: 'Project now inherits global defaults.' })
+    } catch (cause) {
+      const message = errorText(cause)
+      setError(message)
+      host.notify({ kind: 'error', title: 'Could not reset project overrides', message })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!projectId) return jsxs('div', { className: 'flex h-full items-center justify-center p-8', children: [jsxs('div', { className: 'max-w-lg text-center', children: [jsx('h1', { className: 'text-base font-semibold text-(--ui-text-primary)', children: 'Select a Dark Factory project' }), jsx('p', { className: 'mt-2 text-xs text-(--ui-text-tertiary)', children: 'Return to the projects list and choose a build workspace.' }), jsx(Button, { type: 'button', className: 'mt-4', onClick: () => host.navigate(ROUTE), children: 'Open projects' })] })] })
+  if (loading && !detail) return jsxs('div', { className: 'flex h-full items-center justify-center p-8 text-sm text-(--ui-text-tertiary)', children: [jsx('span', { className: 'mr-2 inline-block size-3 animate-spin rounded-full border-2 border-(--ui-stroke-secondary) border-t-primary' }), 'Loading project…'] })
+  if (!detail) return jsxs('div', { className: 'flex h-full items-center justify-center p-8', children: [jsxs('div', { className: 'max-w-lg rounded-[6px] border border-destructive/30 p-5', children: [jsx('h1', { className: 'text-sm font-semibold text-destructive', children: 'Project is unavailable' }), jsx('p', { className: 'mt-2 text-xs text-(--ui-text-secondary)', children: error || 'The Hermes project could not be read.' }), jsx(Button, { type: 'button', className: 'mt-4', onClick: () => host.navigate(ROUTE), children: 'Back to projects' })] })] })
+
+  const progress = record(detail.progress)
+  const coordination = record(config.coordination)
+  const beads = record(detail.beads)
+  const logs = record(detail.logs)
+  return jsxs('div', { className: 'h-full overflow-y-auto bg-(--ui-bg-primary) text-foreground', children: [
+    jsxs('header', { className: 'sticky top-0 z-10 border-b border-(--ui-stroke-secondary) bg-(--ui-bg-primary)/95 px-5 py-3 backdrop-blur', children: [
+      jsxs('div', { className: 'mx-auto flex max-w-[92rem] flex-wrap items-center justify-between gap-3', children: [jsxs('div', { children: [jsx(Button, { type: 'button', variant: 'ghost', size: 'xs', onClick: () => host.navigate(ROUTE), children: '← Projects' }), jsx('h1', { className: 'mt-1 text-base font-semibold text-(--ui-text-primary)', children: text(detail.name) }), jsx('p', { className: 'mt-0.5 break-all text-xs text-(--ui-text-tertiary)', children: text(detail.primary_path) })] }), jsxs('div', { className: 'flex items-center gap-2', children: [statusBadge(progress.status), jsx(Button, { type: 'button', variant: 'secondary', onClick: () => host.navigate(SETUP_ROUTE), children: 'Configure mission' }), jsx(Button, { type: 'button', variant: 'ghost', onClick: () => setReloadToken(value => value + 1), children: 'Refresh' })] })] }), error ? jsx('div', { className: 'mx-auto mt-3 max-w-[92rem] rounded-[4px] border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive', children: error }) : null] }),
+    jsxs('main', { className: 'mx-auto grid max-w-[92rem] gap-4 p-5 xl:grid-cols-[minmax(0,1fr)_20rem]', children: [
+      jsxs('div', { className: 'flex min-w-0 flex-col gap-4', children: [
+        jsxs('section', { className: 'grid gap-3 sm:grid-cols-4', children: [metric('Progress', `${Number(progress.percent) || 0}%`, `${Number(progress.completed_milestones) || 0}/${Number(progress.total_milestones) || 0} milestones`), metric('Slices', `${Number(progress.completed_slices) || 0}/${Number(progress.total_slices) || 0}`, 'accepted slices'), metric('Events', Number(progress.event_count) || 0, 'state transitions'), metric('Coordination', text(coordination.mode) || 'beads', beads.ready ? `Beads ${text(beads.version) || 'ready'}` : text(beads.reason) || 'status unavailable')] }),
+        jsx('section', { className: 'rounded-[6px] border border-(--ui-stroke-secondary) bg-(--ui-bg-secondary) p-4', children: [jsx('h2', { className: 'text-sm font-semibold text-(--ui-text-primary)', children: 'Milestone progress' }), jsx('div', { className: 'mt-3 flex flex-col gap-2', children: list(progress.milestones).map(item => { const value = record(item); return jsxs('div', { className: 'flex items-center gap-3 rounded-[4px] border border-(--ui-stroke-secondary) p-2', children: [jsx('div', { className: 'min-w-0 flex-1 truncate text-xs text-(--ui-text-secondary)', children: text(value.title) || text(value.id) }), statusBadge(value.status)] }, text(value.id)) }) })] }),
+        jsxs('section', { className: 'rounded-[6px] border border-(--ui-stroke-secondary) bg-(--ui-bg-secondary) p-4', children: [jsx('div', { className: 'flex items-center justify-between gap-3', children: [jsx('h2', { className: 'text-sm font-semibold text-(--ui-text-primary)', children: 'Factory log' }), jsx('span', { className: 'text-[0.6875rem] text-(--ui-text-tertiary)', children: list(logs.sources).join(', ') || 'state.events' })] }), jsx('pre', { className: 'mt-3 max-h-72 overflow-auto whitespace-pre-wrap rounded-[4px] border border-(--ui-stroke-secondary) p-3 font-mono text-[0.6875rem] leading-5 text-(--ui-text-secondary)', children: text(logs.text) || 'No factory events have been recorded yet.' })] })
+      ] }),
+      jsxs('aside', { className: 'flex flex-col gap-4', children: [
+        jsxs('section', { className: 'rounded-[6px] border border-(--ui-stroke-secondary) bg-(--ui-bg-secondary) p-4', children: [jsxs('div', { className: 'flex items-center justify-between gap-2', children: [jsx('h2', { className: 'text-sm font-semibold text-(--ui-text-primary)', children: 'Project choices' }), jsx('span', { className: 'text-[0.6875rem] text-(--ui-text-tertiary)', children: Object.keys(record(overrides)).length ? 'custom' : 'inherited' })] }), jsx('div', { className: 'mt-3 text-[0.6875rem] text-(--ui-text-tertiary)', children: 'Changes here apply only to this project. Mission intake remains separately gated.' }), jsx('div', { className: 'mt-3', children: jsx(coordinationEditor, { coordination, onChange: value => update('coordination', value) }) }), jsx('div', { className: 'mt-4', children: jsx(modelEditor, { models: config.models, catalog: record(detail.model_options), onChange: value => update('models', value) }) }), jsx('div', { className: 'mt-4', children: jsx(promptEditor, { prompts: config.system_prompts, onChange: value => update('system_prompts', value) }) }), jsxs('div', { className: 'mt-4 flex gap-2', children: [jsx(Button, { type: 'button', disabled: saving || !dirty, onClick: save, children: saving ? 'Saving…' : 'Save project choices' }), jsx(Button, { type: 'button', variant: 'ghost', disabled: saving || !Object.keys(record(overrides)).length, onClick: reset, children: 'Use global' })] })] }),
+        jsxs('section', { className: 'rounded-[6px] border border-(--ui-stroke-secondary) bg-(--ui-bg-secondary) p-4', children: [jsx('h2', { className: 'text-sm font-semibold text-(--ui-text-primary)', children: 'Beads visibility' }), jsx('p', { className: 'mt-2 text-[0.6875rem] leading-4 text-(--ui-text-tertiary)', children: beads.ready ? `Connected: ${text(beads.version) || 'bd'}` : text(beads.reason) || 'Beads status unavailable.' }), jsx(Button, { type: 'button', variant: 'ghost', className: 'mt-3 w-full justify-center', onClick: () => openExternal(BEAD_ME_UP_URL), children: 'View Beads with Bead Me Up Scotty ↗' })] }),
+        jsx('div', { className: 'rounded-[6px] border border-(--ui-stroke-secondary) p-4 text-[0.6875rem] leading-4 text-(--ui-text-tertiary)', children: text(detail.snapshot?.manifest_path) ? `Manifest: ${text(detail.snapshot.manifest_path)}` : 'No compiled manifest yet. Complete intake before arming.' })
+      ] })
+    ] })
+  ] })
+}
+
+function DarkFactoryPage({ rest, projectId = '' }) {
   const [setup, setSetup] = useState(() => normaliseSetup({}))
   const [catalog, setCatalog] = useState(() => normaliseCatalog({}))
   const [profile, setProfile] = useState('default')
@@ -599,16 +1034,20 @@ function DarkFactoryPage({ rest }) {
   const [refreshingModels, setRefreshingModels] = useState(false)
   const [saving, setSaving] = useState(false)
   const [arming, setArming] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [importPath, setImportPath] = useState('')
   const [dirty, setDirty] = useState(false)
   const [error, setError] = useState('')
   const [reloadToken, setReloadToken] = useState(0)
+  const [projectOverrides, setProjectOverrides] = useState({})
+  const projectRoute = projectId ? `/projects/${encodeURIComponent(projectId)}` : ''
 
   useEffect(() => {
     let live = true
     setLoading(true)
     setError('')
 
-    Promise.all([rest('/setup'), rest('/model-options')])
+    Promise.all([rest(projectRoute || '/setup'), rest('/model-options')])
       .then(([setupPayload, modelPayload]) => {
         if (!live) return
         const setupResponse = record(setupPayload)
@@ -617,6 +1056,7 @@ function DarkFactoryPage({ rest }) {
         setCatalog(options)
         setProfile(text(setupResponse.profile || options.profile) || 'default')
         setReadiness(setupResponse.readiness || null)
+        setProjectOverrides(record(setupResponse.config).overrides || {})
         setDirty(false)
       })
       .catch(cause => {
@@ -632,10 +1072,28 @@ function DarkFactoryPage({ rest }) {
     return () => {
       live = false
     }
-  }, [rest, reloadToken])
+  }, [rest, projectRoute, reloadToken])
 
   const change = useCallback((path, value) => {
-    setSetup(current => setAtPath(current, path, value))
+    setSetup(current => {
+      const next = setAtPath(current, path, value)
+      if (projectId && ['models', 'model_policy', 'system_prompts', 'policy'].includes(path[0])) {
+        setProjectOverrides(currentOverrides => ({
+          ...record(currentOverrides),
+          models: next.models,
+          model_policy: next.model_policy,
+          system_prompts: next.system_prompts,
+          policy: next.policy
+        }))
+      }
+      if (projectId && path[0] === 'execution' && path[1] === 'reasoning_effort') {
+        setProjectOverrides(currentOverrides => ({
+          ...record(currentOverrides),
+          reasoning_effort: next.execution.reasoning_effort
+        }))
+      }
+      return next
+    })
     setDirty(true)
     setCompileResult(null)
   }, [])
@@ -659,7 +1117,10 @@ function DarkFactoryPage({ rest }) {
     setSaving(true)
     setError('')
     try {
-      const payload = record(await rest('/setup', { method: 'PUT', body: { setup: serialiseSetup(setup, catalog) } }))
+      const request = { body: { setup: serialiseSetup(setup, catalog) } }
+      const body = request.body
+      if (projectId) body.overrides = projectOverrides
+      const payload = record(await rest(projectRoute || '/setup', { method: 'PUT', body }))
       const saved = normaliseSetup(payload.setup || setup, catalog)
       setSetup(saved)
       setReadiness(payload.readiness || readiness)
@@ -685,7 +1146,10 @@ function DarkFactoryPage({ rest }) {
     setArming(true)
     setError('')
     try {
-      const payload = record(await rest('/compile', { method: 'POST', body: { setup: serialiseSetup(setup, catalog) } }))
+      const request = { body: { setup: serialiseSetup(setup, catalog) } }
+      const body = request.body
+      if (projectId) body.overrides = projectOverrides
+      const payload = record(await rest(projectRoute ? `${projectRoute}/compile` : '/compile', { method: 'POST', body }))
       if (payload.readiness) setReadiness(payload.readiness)
       setCompileResult(payload)
       setDirty(false)
@@ -699,9 +1163,34 @@ function DarkFactoryPage({ rest }) {
     }
   }
 
+  const importManifest = async () => {
+    if (!text(importPath).trim()) {
+      host.notify({ kind: 'error', title: 'Manifest path required', message: 'Enter the absolute path to a canonical JSON manifest.' })
+      return
+    }
+    setImporting(true)
+    setError('')
+    try {
+      const body = { manifest_path: text(importPath).trim() }
+      if (projectId) body.project_id = projectId
+      const payload = record(await rest('/manifest/import', { method: 'POST', body }))
+      setCompileResult(payload)
+      setDirty(false)
+      setImportPath('')
+      host.notify({ kind: 'success', title: 'Manifest imported', message: `Factory pair written to ${text(payload.manifest_path)}. Beads graph remains unapplied.` })
+      setReloadToken(value => value + 1)
+    } catch (cause) {
+      const message = errorText(cause)
+      setError(message)
+      host.notify({ kind: 'error', title: 'Manifest import rejected', message })
+    } finally {
+      setImporting(false)
+    }
+  }
+
   const personaOptions = useMemo(() => setup.personas.map(item => ({ id: item.id, label: item.name || item.id })), [setup.personas])
   const storyOptions = useMemo(() => setup.user_stories.map(item => ({ id: item.id, label: item.want || item.id })), [setup.user_stories])
-  const busy = saving || arming
+  const busy = saving || arming || importing
   const canArm = Boolean(readiness?.ready) && !dirty && !busy
   const solAvailable = modelRefAvailable(catalog, SOL_ORCHESTRATOR)
   const lunaAvailable = modelRefAvailable(catalog, LUNA_WORKER)
@@ -754,6 +1243,22 @@ function DarkFactoryPage({ rest }) {
               jsxs('div', {
                 className: 'flex items-center gap-2',
                 children: [
+                  jsx(Input, {
+                    className: 'w-64 max-w-[35vw]',
+                    value: importPath,
+                    placeholder: '/absolute/path/to/manifest.json',
+                    title: 'Import a canonical schema-v2 Beads-backed manifest',
+                    onChange: event => setImportPath(event.target.value),
+                    disabled: busy
+                  }),
+                  jsx(Button, {
+                    type: 'button',
+                    variant: 'ghost',
+                    disabled: busy || !text(importPath).trim(),
+                    title: 'Import a validated manifest without applying the Beads graph.',
+                    onClick: importManifest,
+                    children: importing ? 'Importing…' : 'Import Manifest'
+                  }),
                   jsx(Button, {
                     type: 'button',
                     variant: 'secondary',
@@ -1501,16 +2006,38 @@ function DarkFactoryPage({ rest }) {
 export default {
   id: PLUGIN_ID,
   name: 'Dark Factory',
-  description: 'Guided product, evidence, risk, and model intake for a bounded autonomous software factory.',
+  description: 'Repeatable project workspaces for bounded autonomous software factories.',
   defaultEnabled: false,
   register(ctx) {
+    openExternal = typeof ctx.os?.openExternal === 'function' ? ctx.os.openExternal : () => false
     ctx.registerMany([
       {
-        id: 'page',
+        id: 'projects-page',
         area: ROUTES_AREA,
-        title: 'Dark Factory setup',
+        title: 'Dark Factory projects',
         data: { path: ROUTE },
-        render: () => jsx(DarkFactoryPage, { rest: ctx.rest })
+        render: () => jsx(FactoryProjectsPage, { rest: ctx.rest })
+      },
+      {
+        id: 'project-page',
+        area: ROUTES_AREA,
+        title: 'Dark Factory project',
+        data: { path: PROJECT_ROUTE },
+        render: () => jsx(FactoryProjectPage, { rest: ctx.rest })
+      },
+      {
+        id: 'settings-page',
+        area: ROUTES_AREA,
+        title: 'Dark Factory global defaults',
+        data: { path: SETTINGS_ROUTE },
+        render: () => jsx(FactorySettingsPage, { rest: ctx.rest })
+      },
+      {
+        id: 'setup-page',
+        area: ROUTES_AREA,
+        title: 'Dark Factory mission setup',
+        data: { path: SETUP_ROUTE },
+        render: () => jsx(DarkFactoryPage, { rest: ctx.rest, projectId: selectedProjectId })
       },
       {
         id: 'nav',
@@ -1523,9 +2050,19 @@ export default {
         area: PALETTE_AREA,
         data: {
           id: 'dark-factory.open',
-          label: 'Dark Factory: Open setup',
-          keywords: ['dark factory', 'factory', 'mission', 'setup', 'autonomous development'],
+          label: 'Dark Factory: Open projects',
+          keywords: ['dark factory', 'factory', 'projects', 'mission', 'setup', 'autonomous development'],
           run: () => host.navigate(ROUTE)
+        }
+      },
+      {
+        id: 'settings',
+        area: PALETTE_AREA,
+        data: {
+          id: 'dark-factory.settings',
+          label: 'Dark Factory: Open global defaults',
+          keywords: ['dark factory', 'defaults', 'models', 'prompts', 'beads'],
+          run: () => host.navigate(SETTINGS_ROUTE)
         }
       }
     ])

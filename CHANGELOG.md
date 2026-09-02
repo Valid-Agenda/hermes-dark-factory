@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.4.0 — desktop project workspace candidate
+
+### Added
+
+- Hermes-native desktop Projects overview for repeat Dark Factory builds.
+- Per-project progress, milestone/slice status, bounded event/log tail, and Beads capability/readiness snapshot.
+- Profile-scoped global defaults for model role references, system prompts, coordination mode, Beads settings, and policy/reasoning values.
+- Sparse per-project overrides with reset-to-global behavior.
+- Project-aware intake save and compile routes while preserving the legacy dashboard setup contract.
+- Optional `system_prompts` manifest field with backward-compatible validation for older manifests.
+- Canonical manifest import from chat/tool or desktop path into a pristine manifest/state pair, without applying Beads.
+- Namespaced plugin skill workflow (`/skill dark-factory:dark-factory`) for chat-first intake, import, preflight, compile, planning, and guarded execution.
+- Optional [Bead Me Up Scotty](https://github.com/brendan-appstart/bead-me-up-scotty) visibility link over the same local Beads store.
+
+### Limitations
+
+- Beads CLI v1.2.2, an initialized project Beads directory, and explicit write authorization are required before project compilation or graph writes.
+- Hermes Kanban is intentionally not used; legacy `local`, `kanban`, and `both` settings migrate to the required Beads mode.
+- The desktop plugin remains opt-in under Hermes' unified plugin security posture.
+
 ## 0.3.0 — bounded dogfood candidate
 
 ### Added

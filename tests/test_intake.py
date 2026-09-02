@@ -14,6 +14,7 @@ from plugin.intake import (
     compile_manifest,
     compile_to_workspace,
     default_setup,
+    import_manifest_to_workspace,
     load_setup,
     normalise_setup,
     resolve_setup_models,
@@ -254,17 +255,15 @@ class IntakeReadinessTests(unittest.TestCase):
                     mutate(setup)
                     self.assertFalse(validate_intake(setup, model_catalog=catalog())["ready"])
 
-    def test_local_compatibility_backend_is_ready_without_beads_preflight(self) -> None:
+    def test_local_backend_is_rejected_in_beads_only_factory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             setup = ready_setup(tmp)
             setup["execution"]["graph_backend"] = "local"
             setup["execution"]["graph_mode"] = "apply"
             setup["execution"]["beads_directory"] = "/definitely/not/a/beads/store"
             result = validate_intake(setup, model_catalog=catalog())
-        self.assertTrue(result["ready"], result)
-        self.assertFalse(any(item["code"] == "execution.beads.preflight" for item in result["blockers"]))
-        self.assertEqual(result["risk"], "R3")
-        self.assertEqual(result["blockers"], [])
+        self.assertFalse(result["ready"], result)
+        self.assertTrue(any(item["code"] == "execution.valid" for item in result["blockers"]), result)
 
     def test_beads_apply_blank_directory_preflights_workspace_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1129,6 +1128,49 @@ class DashboardModelOptionTests(unittest.TestCase):
         self.assertTrue(result["readiness"]["ready"])
         saved = save.call_args.args[0]
         self.assertEqual(saved["models"]["builder"], {"provider": "alpha", "model": "builder"})
+
+
+class ManifestImportTests(unittest.TestCase):
+    def _template(self, workspace: str) -> dict:
+        manifest = json.loads((ROOT / "templates" / "manifest.example.json").read_text(encoding="utf-8"))
+        manifest["mission"]["workspace_path"] = workspace
+        return manifest
+
+    def test_imports_canonical_manifest_as_atomic_pristine_pair(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = str(Path(tmp) / "imported")
+            manifest = self._template(workspace)
+            result = import_manifest_to_workspace(manifest)
+            manifest_path = Path(result["manifest_path"])
+            state_path = Path(result["state_path"])
+            self.assertTrue(manifest_path.is_file())
+            self.assertTrue(state_path.is_file())
+            self.assertEqual(json.loads(manifest_path.read_text(encoding="utf-8")), manifest)
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(state["revision"], 0)
+            self.assertEqual(result["source"], "manifest_import")
+            self.assertFalse(result["credentials_stored"])
+
+    def test_import_rejects_non_beads_manifest_without_writing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = str(Path(tmp) / "local-import")
+            manifest = self._template(workspace)
+            manifest["execution"]["graph_backend"] = "local"
+            with self.assertRaisesRegex(FactoryError, "graph_backend=beads"):
+                import_manifest_to_workspace(manifest)
+            self.assertFalse(Path(workspace).exists())
+
+    def test_import_refuses_progressed_pair(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            workspace = str(Path(tmp) / "progressed")
+            manifest = self._template(workspace)
+            first = import_manifest_to_workspace(manifest)
+            state_path = Path(first["state_path"])
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["revision"] = 1
+            state_path.write_text(json.dumps(state), encoding="utf-8")
+            with self.assertRaises(FactoryError):
+                import_manifest_to_workspace(manifest)
 
 
 if __name__ == "__main__":

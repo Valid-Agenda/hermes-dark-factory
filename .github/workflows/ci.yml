@@ -48,3 +48,4 @@ jobs:
         run: |
           node --check plugin/dashboard/dist/index.js
           node --check plugin/desktop/plugin.js
+          node tests/desktop_plugin_contract.js plugin/desktop/plugin.js

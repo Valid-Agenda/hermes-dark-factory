@@ -10,7 +10,17 @@ Use Python 3.11 or newer. For a clean checkout, install the pinned repository de
 python3 -m pip install -r requirements-dev.txt
 ```
 
-Hermes Agent supplies the host runtime and native plugin APIs. Beads integration tests that require the external CLI are optional; when exercised, use Beads CLI v1.2.2 in an isolated temporary directory.
+Hermes Agent supplies the host runtime and native plugin APIs. Beads CLI v1.2.2 is a required runtime dependency for project compilation and graph writes; the repository does not vendor or silently install it. Install it separately in the same environment as Hermes, verify `bd --version`, and initialize each disposable project with `bd init` before enabling graph writes:
+
+```bash
+npm install -g @beads/bd@1.2.2
+command -v bd
+bd --version
+cd /absolute/path/to/disposable-project
+bd init
+```
+
+`bd init` is project-local by default and creates `.beads/`. Do not use the explicit `--global` or `--shared-server` modes for ordinary isolated Dark Factory projects.
 
 Run the local gates from the repository root:
 

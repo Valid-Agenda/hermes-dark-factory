@@ -8,6 +8,7 @@ configured manifest are present.
 from __future__ import annotations
 
 import ast
+import copy
 import json
 import os
 import re
@@ -37,7 +38,14 @@ from .engine import (
     save_transition,
     validate_manifest,
 )
-from .intake import compile_to_workspace, load_setup, normalise_setup, resolve_setup_models, validate_intake
+from .intake import (
+    compile_to_workspace,
+    import_manifest_to_workspace,
+    load_setup,
+    normalise_setup,
+    resolve_setup_models,
+    validate_intake,
+)
 from .beads_adapter import BeadsAdapterError, apply_graph_plan, build_graph_plan
 
 
@@ -363,6 +371,59 @@ def _handle_compile(params: dict[str, Any], **_: Any) -> str:
             return _json_result({"error": "factory intake is not ready", "readiness": readiness}, success=False)
         result = compile_to_workspace(setup, model_catalog=catalog)
         return _json_result({"readiness": readiness, **result})
+    except (FactoryError, OSError, ValueError) as exc:
+        return _json_result({"error": str(exc)}, success=False)
+
+
+def _handle_import_manifest(params: dict[str, Any], **_: Any) -> str:
+    """Import a validated manifest without applying its Beads graph."""
+    try:
+        source_path = ""
+        manifest_path_value = params.get("manifest_path")
+        inline_manifest = params.get("manifest")
+        if manifest_path_value and inline_manifest is not None:
+            raise FactoryError("provide either manifest_path or manifest, not both")
+        if manifest_path_value:
+            source_path = str(Path(str(manifest_path_value)).expanduser().resolve())
+            candidate = load_manifest(source_path)
+        elif isinstance(inline_manifest, dict):
+            candidate = copy.deepcopy(inline_manifest)
+        else:
+            raise FactoryError("manifest_path or manifest is required")
+        workspace_override = params.get("workspace_path")
+        if workspace_override is not None:
+            if not isinstance(workspace_override, str) or not workspace_override.strip():
+                raise FactoryError("workspace_path must be a non-empty path")
+            mission = candidate.get("mission")
+            if not isinstance(mission, dict):
+                raise FactoryError("manifest import requires a mission object")
+            mission["workspace_path"] = str(Path(workspace_override).expanduser().resolve())
+        try:
+            catalog = _active_model_catalog()
+        except Exception:
+            return _inventory_unavailable_result()
+        check = _validate_runtime_manifest(candidate)
+        if not check["valid"]:
+            return _json_result(
+                {
+                    "error": "manifest import is not ready",
+                    "readiness": check,
+                    "source_path": source_path,
+                },
+                success=False,
+            )
+        result = import_manifest_to_workspace(
+            candidate,
+            workspace_path=None,
+        )
+        return _json_result(
+            {
+                "readiness": check,
+                "source_path": source_path,
+                "model_catalog_profile": catalog.get("profile") if isinstance(catalog, dict) else "",
+                **result,
+            }
+        )
     except (FactoryError, OSError, ValueError) as exc:
         return _json_result({"error": str(exc)}, success=False)
 
@@ -1276,6 +1337,34 @@ def register(ctx: Any) -> None:
             },
         },
         handler=_handle_compile,
+    )
+    ctx.register_tool(
+        name="factory_import_manifest",
+        toolset="dark_factory",
+        schema={
+            "name": "factory_import_manifest",
+            "description": "Import a canonical schema-v2 Dark Factory manifest into a new or pristine workspace. Requires Beads as the graph backend, validates active-profile models, writes manifest/state atomically, and never applies the Beads graph.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "manifest_path": {
+                        "type": "string",
+                        "description": "Absolute or user-relative path to a JSON manifest. Mutually exclusive with manifest.",
+                    },
+                    "manifest": {
+                        "type": "object",
+                        "description": "Inline canonical schema-v2 manifest. Mutually exclusive with manifest_path.",
+                        "additionalProperties": True,
+                    },
+                    "workspace_path": {
+                        "type": "string",
+                        "description": "Optional workspace override. The manifest mission workspace_path is used when omitted.",
+                    },
+                },
+                "required": [],
+            },
+        },
+        handler=_handle_import_manifest,
     )
     ctx.register_tool(
         name="factory_validate",

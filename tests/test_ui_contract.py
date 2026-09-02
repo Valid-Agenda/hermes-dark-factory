@@ -578,7 +578,7 @@ class DesktopBundleContractTests(BundleContractMixin, unittest.TestCase):
             "The preset covers execution roles only",
             "Preferred preset model unavailable",
             "model_policy: { preset: text(modelPolicy.preset) || SOL_LUNA_PRESET }",
-            "graph_backend: execution.graph_backend === 'local' || execution.backend === 'local' ? 'local' : 'beads'",
+            "graph_backend: 'beads'",
             "graph_mode: text(execution.graph_mode) || 'plan'",
             "beads_directory: text(execution.beads_directory || execution.beads_dir)",
             "beads_isolated_authorized: execution.beads_isolated_authorized === true || execution.allow_init === true",

@@ -38,6 +38,7 @@ MANIFEST_FIELDS = frozenset({
     "schema_version", "mission", "policy", "decisions", "milestones", "slices",
     "models", "model_policy", "execution", "testing", "security", "intake",
 })
+MANIFEST_OPTIONAL_FIELDS = MANIFEST_FIELDS | {"system_prompts"}
 MISSION_REQUIRED_FIELDS = frozenset({
     "id", "name", "problem", "outcome", "context", "project_mode",
     "workspace_path", "personas", "user_stories", "out_of_scope", "constraints",
@@ -77,6 +78,7 @@ SECURITY_REQUIRED_FIELDS = frozenset({
 SECURITY_FIELDS = SECURITY_REQUIRED_FIELDS | {"data", "controls", "human_gates"}
 SECURITY_DECISION_FIELDS = DECISION_FIELDS | {"rationale"}
 MODEL_REFERENCE_FIELDS = frozenset({"provider", "model"})
+SYSTEM_PROMPT_FIELDS = frozenset(MODEL_ROLES)
 MODEL_POLICY_FIELDS = frozenset({
     "preset", "roles", "independent_from_builder", "automatic_fallback",
 })
@@ -160,7 +162,7 @@ CREDENTIAL_VALUE_PATTERNS = (
         r"\s*[:=]\s*(?!\*+\b|\[?redacted\]?\b)\S{8,}"
     ),
 )
-GRAPH_BACKENDS = {"beads", "local"}
+GRAPH_BACKENDS = {"beads"}
 GRAPH_MODES = {"plan", "apply"}
 REASONING_EFFORTS = {"low", "medium", "high"}
 ACCEPTANCE_TYPES = {"happy", "negative", "recovery", "boundary", "abuse"}
@@ -730,7 +732,13 @@ def _check_string_list_items(value: Any, path: str, errors: list[str]) -> None:
 def _validate_manifest_structure(manifest: dict[str, Any], errors: list[str]) -> None:
     """Apply schema-v2 key contracts recursively before semantic validation."""
 
-    _check_exact_fields(manifest, "manifest", MANIFEST_FIELDS, errors)
+    _check_exact_fields(
+        manifest,
+        "manifest",
+        MANIFEST_FIELDS,
+        errors,
+        allowed=MANIFEST_OPTIONAL_FIELDS,
+    )
     mission = manifest.get("mission")
     _check_exact_fields(
         mission,
@@ -821,6 +829,16 @@ def _validate_manifest_structure(manifest: dict[str, Any], errors: list[str]) ->
             _check_exact_fields(
                 models.get(role), f"models.{role}", MODEL_REFERENCE_FIELDS, errors
             )
+
+    system_prompts = manifest.get("system_prompts")
+    if system_prompts is not None:
+        _check_exact_fields(system_prompts, "system_prompts", SYSTEM_PROMPT_FIELDS, errors)
+        if isinstance(system_prompts, dict):
+            for role in MODEL_ROLES:
+                if not isinstance(system_prompts.get(role), str):
+                    errors.append(f"system_prompts.{role} must be a string")
+                elif len(system_prompts[role]) > 16000:
+                    errors.append(f"system_prompts.{role} must be at most 16000 characters")
 
     model_policy = manifest.get("model_policy")
     _check_exact_fields(model_policy, "model_policy", MODEL_POLICY_FIELDS, errors)
@@ -1366,7 +1384,7 @@ def validate_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
                 "beads_isolated_authorized, and reasoning_effort"
             )
         if execution.get("graph_backend") not in GRAPH_BACKENDS:
-            errors.append("execution.graph_backend must be beads or local")
+            errors.append("execution.graph_backend must be beads")
         if execution.get("graph_mode") not in GRAPH_MODES:
             errors.append("execution.graph_mode must be plan or apply")
         beads_directory = execution.get("beads_directory")
