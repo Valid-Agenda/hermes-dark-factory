@@ -16,16 +16,18 @@ This repository is a technical release candidate for Hermes Dark Factory v0.4.0.
 - The dashboard bundle is intentionally vendored under `plugin/dashboard/dist/`; this repository validates its syntax but does not contain the upstream dashboard build source or lockfile. Hermes supplies the desktop host SDK/React runtime.
 - The desktop plugin contributes a Projects overview, project workspace, global defaults page, and project-aware intake route. Project identity remains Hermes-native; factory progress/logs are derived from the manifest/state pair and bounded workspace artifacts.
 
-## Required fresh-Hermes setup
+## Verified fresh-Hermes deployment
 
-Beads CLI v1.2.2 is a separate required runtime dependency. The Dark Factory plugin does not install `bd` and does not run `bd init`. Install/verify `bd` in the Hermes runtime environment, initialize each target project with a project-local `bd init`, then install and enable the plugin. The exact commands are in [README.md](README.md) and the packaged [plugin/README.md](plugin/README.md).
+Beads CLI v1.2.2 is a separate required runtime dependency. The Dark Factory plugin does not install `bd` and does not run `bd init`. The exact operator sequence is documented in [README.md](README.md) and the packaged [plugin/README.md](plugin/README.md): install/verify `bd` in the Hermes runtime environment, initialize each target project with project-local `bd init`, then install and enable the plugin.
 
-The repository does not currently run a real Beads CLI smoke in dependency-only CI; exercise Beads CLI v1.2.2 separately in an isolated temporary project before enabling graph writes. Beads is the required coordination dependency; Hermes Kanban is intentionally not used. Legacy `local`, `kanban`, and `both` persisted settings migrate to Beads, while new writes reject those modes. Browser smoke requires a Hermes dashboard host and is not run on the dependency-only CI job.
+The exact public GitHub install was exercised in an isolated fresh Hermes home. The copied package reported plugin v0.4.0 with manifest v1, contained the packaged setup guide, matched **14/14 tracked plugin files**, passed Plugin Doctor with 10 tools and 1 hook, and registered the plugin skill for the `dark-factory:dark-factory` namespace. A real Beads v1.2.2 disposable-workspace smoke also passed: project-local initialization, 4-node/1-edge dry-run, 4-node apply with read-back, receipt creation, and exact idempotent replay.
 
-## Before public distribution
+CI intentionally does not install the external Beads CLI; the dependency-only workflow validates the rest of the package. The public workflow run `33580801246` passed on Python 3.11, 3.12, and 3.13 plus dashboard/desktop syntax. GitHub reports only upstream Node 20 deprecation annotations for the pinned actions; they did not fail the run. Browser smoke still requires a Hermes dashboard host and is not part of this dependency-only CI job. Beads remains the required coordination dependency; Hermes Kanban is intentionally not used.
 
-1. Rerun the release gates after any further source or metadata change.
-2. Push only the clean public `master` branch. Do not push the local `private-history` backup branch or use `git push --all`.
-3. Create and publish an archive only after the final human-visible release decision is recorded.
+## Publication record
+
+- Clean public `master` was pushed to `https://github.com/Valid-Agenda/hermes-dark-factory.git`.
+- The local `private-history` branch was not pushed, and `git push --all` was not used.
+- The repository includes an explicit [MIT LICENSE](LICENSE).
 
 The repository is intentionally a bounded dogfood prototype. It must not be used as an unattended production deployer, spend authority, or external communications agent without an explicit human gate.
