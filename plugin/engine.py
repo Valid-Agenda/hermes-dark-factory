@@ -40,15 +40,21 @@ def _load_or_create_attestation_key() -> bytes:
         info = key_path.lstat()
     except FileNotFoundError:
         key = secrets.token_bytes(32)
+        descriptor, temporary_name = tempfile.mkstemp(prefix=".review-attestation.", dir=key_dir)
+        temporary_path = Path(temporary_name)
         try:
-            descriptor = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        except FileExistsError:
-            return _load_or_create_attestation_key()
-        with os.fdopen(descriptor, "wb") as handle:
-            handle.write(key)
-            handle.flush()
-            os.fsync(handle.fileno())
-        return key
+            os.fchmod(descriptor, 0o600)
+            with os.fdopen(descriptor, "wb") as handle:
+                handle.write(key)
+                handle.flush()
+                os.fsync(handle.fileno())
+            try:
+                os.link(temporary_path, key_path)
+            except FileExistsError:
+                return _load_or_create_attestation_key()
+            return key
+        finally:
+            temporary_path.unlink(missing_ok=True)
 
     if not stat.S_ISREG(info.st_mode) or key_path.is_symlink():
         raise RuntimeError("Dark Factory attestation key must be a regular file")

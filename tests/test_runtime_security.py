@@ -909,6 +909,21 @@ class RuntimeGuardTests(unittest.TestCase):
             self.assertEqual(verdict["action"], "block")
             self.assertIn("evidence-only", verdict["message"])
 
+    def test_reviewer_deferred_attestation_is_allowed_but_other_tool_calls_are_blocked(self) -> None:
+        with mock.patch.dict(os.environ, {"HERMES_FACTORY_ROLE": "adversary"}, clear=True):
+            allowed = _pre_tool_guard(
+                tool_name="tool_call",
+                args={"name": "factory_attest_review", "arguments": {"entity_id": "M1-S1", "candidate_sha": "a" * 40}},
+            )
+            blocked = _pre_tool_guard(
+                tool_name="tool_call",
+                args={"name": "factory_transition", "arguments": {"entity_id": "M1-S1", "action": "pass_review"}},
+            )
+
+        self.assertIsNone(allowed)
+        self.assertIsNotNone(blocked)
+        self.assertEqual(blocked.get("action") if blocked else None, "block")
+
     def test_reviewer_secret_alias_is_blocked_without_strict_mode(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

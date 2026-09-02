@@ -540,7 +540,8 @@ FACTORY_ROLES = {"integrator", "builder", "reviewer", "verifier", "adversary", "
 REVIEW_ROLES = {"reviewer", "verifier", "adversary", "holdout"}
 REVIEW_READ_ONLY_TOOLS = {
     "read_file", "search_files", "web_search", "web_extract", "browser_snapshot",
-    "browser_get_images", "vision_analyze", "factory_attest_review",
+    "browser_get_images", "vision_analyze", "factory_attest_review", "tool_search",
+    "tool_describe",
 }
 _FACTORY_WRITE_TOOLS = {"write_file", "patch", "terminal", "execute_code"}
 _PATH_ARG_NAMES = {"path", "file_path", "output_path", "destination", "target", "workdir"}
@@ -1154,6 +1155,13 @@ def _pre_tool_guard(tool_name: str = "", args: Any = None, **_: Any) -> dict[str
     if role in REVIEW_ROLES and tool_name in {"read_file", "search_files"}:
         if _is_review_secret_path(str(safe_args.get("path", ""))):
             return {"action": "block", "message": "dark-factory review attestation secrets are not readable by reviewer roles"}
+    if role in REVIEW_ROLES and tool_name == "tool_call":
+        if safe_args.get("name") == "factory_attest_review":
+            return None
+        return {
+            "action": "block",
+            "message": f"dark-factory {role} may use deferred tools only for factory_attest_review",
+        }
     if role in REVIEW_ROLES and tool_name not in REVIEW_READ_ONLY_TOOLS:
         return {
             "action": "block",
