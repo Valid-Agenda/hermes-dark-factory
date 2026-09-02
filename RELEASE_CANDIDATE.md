@@ -10,7 +10,7 @@ This repository is a technical release candidate for Hermes Dark Factory v0.4.0.
 - `python3 scripts/public_release_scan.py` scanned 40 files and reported only the 12 intentionally credential-shaped test-fixture findings; it exited successfully with no non-test findings.
 - The candidate contains an explicit [MIT LICENSE](LICENSE).
 - `hermes plugins doctor ./plugin --ci` passed with 10 tools and 1 hook.
-- The current source plugin security scan returned `safe`, with 0 findings, and the install decision was allowed.
+- The current source plugin security scan returned `safe`, with 11 non-blocking code findings (subprocess/persistence patterns) and no dangerous or credential-exfiltration finding; the install decision was allowed.
 - A real disposable Beads v1.2.2 adapter smoke initialized a project-local `.beads` store, dry-ran 4 nodes/1 edge, applied 4 nodes with read-back verification, wrote a receipt, and replayed idempotently without duplicates.
 - The public tree contains no non-test machine paths, private session links, credential URLs, bearer tokens, or private-key material.
 - The dashboard bundle is intentionally vendored under `plugin/dashboard/dist/`; this repository validates its syntax but does not contain the upstream dashboard build source or lockfile. Hermes supplies the desktop host SDK/React runtime.

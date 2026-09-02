@@ -1,6 +1,6 @@
 # Hermes Dark Factory plugin
 
-This directory is the installable `dark-factory` plugin package for Hermes Agent. It provides the Beads-backed tools, dashboard API, native desktop workspace, and namespaced chat skill.
+This directory is the installable `dark-factory` plugin package for Hermes Agent. It provides the Beads-backed tools, dashboard API, native desktop workspace, and namespaced chat skill. The outer Hermes plugin manifest stays at manifest version 1 for compatibility with Hermes 0.21.x; this does not change Dark Factory's internal schema-v2 mission manifests.
 
 ## Fresh Hermes setup
 
