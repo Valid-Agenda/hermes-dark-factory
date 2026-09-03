@@ -1,8 +1,8 @@
 manifest_version: 1
 api_version: 1
 name: dark-factory
-version: 0.4.0
-description: "Guided, milestone-controlled autonomous software delivery for Hermes with Sol/Luna execution policy, a safe Beads graph adapter, fail-closed intake, deterministic evidence gates, independent review, and repeatable desktop project workspaces."
+version: 0.5.0
+description: "Guided, milestone-controlled autonomous software delivery for Hermes with complete functional blocks, durable Beads-backed supervision, bounded local remediation, Sol/Luna execution policy, fail-closed intake, deterministic evidence gates, independent review, and repeatable desktop project workspaces."
 author: "Hermes Agent"
 license: MIT
 homepage: "https://github.com/Valid-Agenda/hermes-dark-factory"
@@ -12,6 +12,7 @@ provides_tools:
   - factory_import_manifest
   - factory_validate
   - factory_next
+  - factory_start
   - factory_transition
   - factory_attest_review
   - factory_lint_card

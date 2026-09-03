@@ -2,9 +2,11 @@
 
 A bounded, acceptance-driven software factory plugin for [Hermes Agent](https://hermes-agent.nousresearch.com/docs/).
 
-> **Status:** v0.4.0 desktop/chat dogfood candidate. This release is suitable for controlled local pilots, not unattended production delivery.
+> **Status:** v0.5.0 desktop/chat dogfood candidate. This release is suitable for controlled local pilots, not unattended production delivery.
 
-Dark Factory turns an approved product brief into a validated mission contract, disjoint milestone slices, independently checked evidence, and explicit stop/replan decisions. Its control variable is **milestone capability accepted**, not card movement, test activity, token spend, or an ever-growing retry loop.
+Dark Factory turns an approved product brief into a validated mission contract, ordered functional blocks, independently checked milestone evidence, and explicit stop/replan decisions. Its control variable is **milestone capability accepted**, not card movement, test activity, token spend, or an ever-growing retry loop.
+
+**Terminology:** the durable build unit is a **functional block**: a substantial product area such as a complete home page with login/payment wiring, login infrastructure, or a logged-in workflow. The manifest and Beads graph still use the compatibility field name `slices`; in this repository that field means functional block, not a thin top-to-bottom scaffold. Thin slices, semantic edits, refactors, test fixes, and reviewer comments stay inside the active block.
 
 ## Safety boundary
 
@@ -14,7 +16,7 @@ Dark Factory turns an approved product brief into a validated mission contract, 
 - Verifier, adversary, and holdout assignments must be independent from the builder. The Kryptonite/adversarial lens is mandatory.
 - Reviewer-role write restrictions are always active when a reviewer role is present.
 - State transitions are authenticated, revisioned, and fail closed on missing, corrupt, mismatched, or progressed state.
-- A single bounded remediation pass is supported. Repeated identical failures stop and require replanning or human escalation.
+- Local review failures continue through a bounded remediation path (three cycles by default). Repeated identical failures, unchanged candidates, contradictory evidence, unavailable capabilities, and exhausted budgets stop and require replanning or human escalation.
 
 The prototype intentionally requires a human-visible decision before high-risk, public, deployment, or spend actions. It is not a replacement for a durable production attestation service or a long-running dispatcher.
 
@@ -28,6 +30,7 @@ plugin/
 ├── intake.py                       # Guided setup, persistence, and scrubbing
 ├── model_policy.py                 # Authenticated model-role policy
 ├── beads_adapter.py                # Beads v1.2.2 graph adapter
+├── supervisor.py                   # Detached Beads-backed mission supervisor
 ├── dashboard/                      # Dashboard manifest, API, and distributable JS
 ├── desktop/                        # Native Hermes desktop integration
 └── skills/dark-factory/SKILL.md    # Reusable operating protocol
@@ -103,7 +106,7 @@ For local development, run the same checks against `./plugin` before copying it 
 
 The native Hermes desktop integration is a repeat-build workspace, not only a one-off setup form. Enable the installed `dark-factory` plugin under the desktop plugin settings, then use **Dark Factory** in the sidebar:
 
-- **Projects** lists Hermes-native projects and shows factory status, milestone/slice progress, coordination mode, and the last recorded event.
+- **Projects** lists Hermes-native projects and shows factory status, milestone/functional-block progress, coordination mode, and the last recorded event.
 - **New project** creates a named Hermes project, scopes the factory to its primary folder, and keeps its setup/state separate from every other build.
 - **Project workspace** shows the derived progress snapshot, bounded event/log tail, Beads capability/readiness, and project-specific configuration.
 - **Bead visibility** can be opened in [Bead Me Up Scotty](https://github.com/brendan-appstart/bead-me-up-scotty), an optional local visual UI over the same `bd` source of truth. Dark Factory does not copy Beads into a second board/database.
@@ -115,7 +118,7 @@ The native Hermes desktop integration is a repeat-build workspace, not only a on
 
 Plugin-provided skills are namespaced by Hermes. From chat, invoke the Dark Factory skill with `/skill dark-factory:dark-factory`; no desktop navigation is required. The skill drives the same guarded tools through intake, import, preflight, compile, Beads planning, independent review, and authorized execution. To start from a manifest populated by another agent, use `/skill dark-factory:dark-factory import /absolute/path/to/manifest.json` (or provide the manifest object to `factory_import_manifest`). Import writes only a pristine manifest/state pair; it never applies the Beads graph or publishes externally.
 
-The current runtime treats the compiled Dark Factory manifest/state pair as the factory authority and Beads as the required work graph. Hermes Kanban is intentionally not used as a second coordination database. Legacy persisted `local`, `kanban`, and `both` settings migrate to Beads; new configuration rejects them. Project compilation fails closed until the `bd` executable, initialized `.beads` directory, and explicit write authorization are present.
+The current runtime treats the compiled Dark Factory manifest/state pair as the factory authority and Beads as the required work graph. Hermes Kanban is intentionally not used as a second coordination database. Legacy persisted `local`, `kanban`, and `both` settings migrate to Beads; new configuration rejects them. Project compilation fails closed until the `bd` executable, initialized `.beads` directory, and explicit write authorization are present. After the integrator applies the graph, `factory_start` can launch one detached supervisor with explicit unattended authorization; worker sessions are disposable and resume the same functional block after timeout or context exhaustion.
 
 ## Guided setup and model roles
 
@@ -124,7 +127,7 @@ The dashboard and native desktop page read the active profile's authenticated He
 | Role | Responsibility |
 |---|---|
 | Orchestrator / Integrator | Retains mission and milestone intent; owns shared contracts and integration |
-| Worker / Builder | Implements one coherent functional slice |
+| Worker / Builder | Implements one coherent functional block and its required wiring |
 | Verifier | Independently checks the exact candidate against acceptance |
 | Adversary | Runs the mandatory hostile/security lens |
 | Holdout | Judges milestone scenarios the builder cannot redefine |
@@ -157,17 +160,18 @@ The offline CLI is intentionally read-only after initial validation. It does not
 
 ## Plugin tools
 
-The plugin exposes ten tools:
+The plugin exposes eleven tools:
 
 - `factory_preflight` — checks guided setup and active-profile model availability.
 - `factory_compile` — publishes a manifest/state pair after preflight and refuses to overwrite active progress.
 - `factory_import_manifest` — imports a canonical schema-v2 Beads-backed manifest from a path or inline object into a pristine workspace without applying the graph.
 - `factory_validate` — revalidates roles and loads an existing compiled/attested state; it never recreates missing state.
 - `factory_next` — applies the same gates before returning a safe dispatch descriptor.
+- `factory_start` — launches one detached Beads-backed supervisor after explicit unattended authorization.
 - `factory_transition` — performs locked, revisioned/CAS state transitions.
 - `factory_attest_review` — signs verifier, adversary, and holdout receipts from trusted review sessions.
-- `factory_lint_card` — validates a durable work item against the slice contract.
-- `factory_beads_plan` — deterministically projects a mission into Beads epics and functional-slice tasks without changing Beads.
+- `factory_lint_card` — validates a durable work item against the functional-block contract.
+- `factory_beads_plan` — deterministically projects a mission into Beads epics and functional-block tasks without changing Beads.
 - `factory_beads_apply` — integrator-only plan/apply/verify with an atomic local mapping receipt.
 
 The plugin also bundles the `dark-factory:dark-factory` namespaced skill and provides the dashboard and native desktop setup surfaces.
@@ -178,7 +182,7 @@ New setup uses Beads as its only graph backend. The operator must initialize an 
 
 An exact retry re-verifies the graph instead of creating duplicates. Receipt loss, closed-node collisions, graph drift, or a mismatched receipt fail closed. Beads is the required graph authority. For a visual board or dependency graph, use the optional [Bead Me Up Scotty](https://github.com/brendan-appstart/bead-me-up-scotty) companion; it reads the same local `bd` store and is not a second Dark Factory ledger.
 
-Current limitation: v0.4 creates and verifies the graph and emits model-bound dispatch descriptors, but does not include a long-running claimant that polls readiness, launches Hermes sessions, and reconciles graph status after every transition. This remains bounded dogfood support, not unattended production orchestration.
+The supervisor has no mission-wide wall-clock or iteration limit. It polls the durable Beads graph, launches bounded Hermes worker/reviewer sessions, requeues or resumes after disposable-session failure, and stops only for completed state, a typed human/replan gate, or an explicit repeated-identical-failure circuit breaker. It is still a controlled local pilot: deployment, publication, spend, and external communication remain human-gated.
 
 ## Verification
 
@@ -199,13 +203,13 @@ The test suite must discover a nonzero number of tests and finish with `OK`; a b
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) before changing the plugin. In particular:
 
-1. Keep slices coherent and file ownership disjoint.
+1. Keep functional blocks coherent, complete, and file ownership disjoint; thin slices remain inside their block.
 2. Add positive and negative/recovery/boundary acceptance coverage.
 3. Preserve exact model-inventory and credential-scrubbing guarantees.
 4. Run the complete unittest discovery command, syntax checks, and Plugin Doctor.
 5. Include raw evidence coordinates, criterion IDs, exit codes, and SHA-256 digests for release-facing verification.
 
-See [SECURITY.md](SECURITY.md) for vulnerability reporting guidance and [CHANGELOG.md](CHANGELOG.md) for the v0.4.0 change summary.
+See [SECURITY.md](SECURITY.md) for vulnerability reporting guidance and [CHANGELOG.md](CHANGELOG.md) for the v0.5.0 change summary.
 
 ## License
 

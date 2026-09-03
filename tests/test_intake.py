@@ -388,7 +388,7 @@ class IntakeReadinessTests(unittest.TestCase):
                 "active-milestones": lambda value: value["policy"].update({"max_active_milestones": 2}),
                 "parallel-slices": lambda value: value["policy"].update({"max_parallel_slices": 3}),
                 "failure-limit": lambda value: value["policy"].update({"repeated_failure_limit": 3}),
-                "remediation-limit": lambda value: value["policy"].update({"max_remediation_cycles": 2}),
+                "remediation-limit": lambda value: value["policy"].update({"max_remediation_cycles": 4}),
                 "unknown-policy": lambda value: value["policy"].update({"unattended_dispatch": True}),
             }
             for name, mutate in mutations.items():
@@ -651,14 +651,15 @@ class IntakeReadinessTests(unittest.TestCase):
 
 
 class IntakeCompilationTests(unittest.TestCase):
-    def test_compile_produces_schema_v2_manifest_with_forced_gates(self) -> None:
+    def test_compile_produces_schema_v2_manifest_with_milestone_scoped_gates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             manifest = compile_manifest(ready_setup(tmp), model_catalog=catalog())
         result = validate_manifest(manifest)
         self.assertTrue(result["valid"], result)
         self.assertEqual(manifest["schema_version"], 2)
         self.assertTrue(manifest["security"]["mandatory_adversarial_review"])
-        self.assertEqual(manifest["slices"][0]["review_roles"], ["verifier", "adversary"])
+        self.assertFalse(manifest["slices"][0]["review_required"])
+        self.assertEqual(manifest["slices"][0]["review_roles"], [])
         self.assertEqual(manifest["slices"][0]["story_id"], "US1")
         self.assertEqual(manifest["milestones"][0]["story_ids"], ["US1"])
         story_acceptance = manifest["mission"]["user_stories"][0]["acceptance"]
@@ -670,10 +671,6 @@ class IntakeCompilationTests(unittest.TestCase):
         self.assertEqual(
             [list(criterion) for criterion in manifest["milestones"][0]["acceptance"]],
             [["id", "type", "statement"]] * 3,
-        )
-        self.assertEqual(
-            manifest["milestones"][0]["acceptance"],
-            [ready_setup(tmp)["milestones"][0]["acceptance"][0], *story_acceptance],
         )
         self.assertEqual([criterion["type"] for criterion in story_acceptance], ["happy", "negative"])
         self.assertEqual(manifest["model_policy"]["roles"]["integrator"], "orchestrator")
@@ -688,6 +685,45 @@ class IntakeCompilationTests(unittest.TestCase):
             [(item["id"], item["statement"], item["status"]) for item in manifest["security"]["authority_decisions"]],
             [(item["id"], item["statement"], item["status"]) for item in manifest["decisions"]],
         )
+
+    def test_compile_groups_stories_into_one_complete_functional_block(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            setup = ready_setup(tmp)
+            setup["user_stories"].append({
+                "id": "US2",
+                "persona_id": "editor",
+                "want": "pay for an approved article",
+                "so_that": "the published handoff has a durable billing record",
+                "acceptance": [
+                    {
+                        "id": "US2-A1",
+                        "type": "happy",
+                        "statement": "The editor sees a successful payment handoff for the article",
+                    },
+                    {
+                        "id": "US2-A2",
+                        "type": "negative",
+                        "statement": "A declined payment does not publish the article",
+                    },
+                ],
+                "paths": ["src/billing/**", "tests/billing/**"],
+            })
+            setup["milestones"][0]["story_ids"] = ["US1", "US2"]
+            setup["milestones"][0]["blocks"] = [{
+                "id": "home-page",
+                "outcome": "The editor can use the complete home page with draft, login, and payment handoffs",
+                "story_ids": ["US1", "US2"],
+                "paths": ["src/articles/**", "src/billing/**", "tests/**"],
+            }]
+            manifest = compile_manifest(setup, model_catalog=catalog())
+        self.assertTrue(validate_manifest(manifest)["valid"])
+        self.assertEqual([item["id"] for item in manifest["slices"]], ["home-page"])
+        self.assertEqual(manifest["slices"][0]["story_ids"], ["US1", "US2"])
+        self.assertEqual(
+            [item["id"] for item in manifest["slices"][0]["acceptance"]],
+            ["US1-A1", "US1-A2", "US2-A1", "US2-A2"],
+        )
+        self.assertFalse(manifest["slices"][0]["review_required"])
 
     def test_actual_ui_shaped_high_risk_threats_compile_with_exact_schema(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

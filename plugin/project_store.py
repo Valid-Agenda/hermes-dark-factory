@@ -244,7 +244,7 @@ def _normalise_policy(value: Any, *, partial: bool) -> dict[str, int]:
             "max_active_milestones": 1,
             "max_parallel_slices": 2,
             "repeated_failure_limit": 2,
-            "max_remediation_cycles": 1,
+            "max_remediation_cycles": 3,
         }
     unknown = _unknown_fields(value, POLICY_FIELDS, "policy")
     if unknown:

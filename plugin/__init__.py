@@ -47,6 +47,7 @@ from .intake import (
     validate_intake,
 )
 from .beads_adapter import BeadsAdapterError, apply_graph_plan, build_graph_plan
+from .supervisor import SupervisorError, start_supervisor_process
 
 
 def _json_result(data: dict[str, Any], success: bool = True) -> str:
@@ -132,6 +133,41 @@ def _handle_next(params: dict[str, Any], **_: Any) -> str:
             }
         )
     except FactoryError as exc:
+        return _json_result({"error": str(exc)}, success=False)
+
+
+def _handle_start(params: dict[str, Any], **runtime: Any) -> str:
+    try:
+        if params.get("allow_unattended") is not True:
+            raise FactoryError("factory_start requires explicit allow_unattended=true authorization")
+        manifest_path, state_path = _resolve_paths(params)
+        manifest = load_manifest(manifest_path)
+        check = _validate_runtime_manifest(manifest)
+        if not check["valid"]:
+            return _json_result({"error": "invalid or unavailable runtime manifest", **check}, success=False)
+        if not Path(state_path).is_file():
+            raise FactoryError(_RUNTIME_STATE_UNAVAILABLE)
+        profile = str(
+            params.get("profile")
+            or runtime.get("profile")
+            or os.environ.get("HERMES_PROFILE")
+            or os.environ.get("HERMES_PROFILE_NAME")
+            or ""
+        ).strip()
+        if not profile:
+            raise FactoryError("factory_start requires the active Hermes profile name")
+        result = start_supervisor_process(
+            manifest_path,
+            state_path,
+            profile=profile,
+            bd_executable=str(params.get("bd_executable") or "bd"),
+            hermes_executable=str(params.get("hermes_executable") or "hermes"),
+            poll_seconds=int(params.get("poll_seconds") or 20),
+            worker_timeout_seconds=int(params.get("worker_timeout_seconds") or 1200),
+            allow_unattended=True,
+        )
+        return _json_result({"profile": profile, **result})
+    except (FactoryError, SupervisorError, BeadsAdapterError, OSError, ValueError, TypeError) as exc:
         return _json_result({"error": str(exc)}, success=False)
 
 
@@ -1217,7 +1253,9 @@ def _pre_tool_guard(tool_name: str = "", args: Any = None, **_: Any) -> dict[str
                 return _delegation_block()
             state_candidate = Path(configured_state).expanduser().resolve()
             state, _ = load_state(manifest, state_candidate)
-            startable_slices = set(next_actions(manifest, state)["startable_slices"])
+            following = next_actions(manifest, state)
+            startable_slices = set(following["startable_slices"])
+            continuation_slices = set(following["continuation_slices"])
         except (FactoryError, OSError, ValueError, TypeError, RuntimeError, KeyError):
             return _delegation_block()
 
@@ -1241,6 +1279,7 @@ def _pre_tool_guard(tool_name: str = "", args: Any = None, **_: Any) -> dict[str
             milestone_id = _normalised_card_value(sections["Factory-Milestone"])
             slice_id = _normalised_card_value(sections["Factory-Slice"])
             outcome = _normalised_card_value(sections["Outcome"])
+            requested_action = str(task.get("action") or "").strip()
             if (
                 not milestone_id
                 or not slice_id
@@ -1256,7 +1295,18 @@ def _pre_tool_guard(tool_name: str = "", args: Any = None, **_: Any) -> dict[str
                 str(slice_spec.get("milestone_id") or "") != milestone_id
                 or slice_id not in list(milestone_spec.get("slices") or [])
                 or outcome != " ".join(str(slice_spec.get("outcome") or "").split())
-                or slice_id not in startable_slices
+                or (
+                    slice_id not in startable_slices
+                    and slice_id not in continuation_slices
+                )
+                or (
+                    slice_id in startable_slices
+                    and requested_action not in {"", "start_slice"}
+                )
+                or (
+                    slice_id in continuation_slices
+                    and requested_action not in {"", "continue_slice"}
+                )
             ):
                 return _delegation_block()
 
@@ -1393,7 +1443,7 @@ def register(ctx: Any) -> None:
         toolset="dark_factory",
         schema={
             "name": "factory_next",
-            "description": "Inspect existing attested state and return only factory actions that are safe under dependency, WIP, overlap, and replan gates. Never initializes state.",
+            "description": "Inspect existing attested state and return only factory actions that are safe under dependency, WIP, overlap, and bounded continuation/replan gates. Never initializes state.",
             "parameters": {
                 "type": "object",
                 "properties": dict(COMMON_PATH_PROPERTIES),
@@ -1403,11 +1453,39 @@ def register(ctx: Any) -> None:
         handler=_handle_next,
     )
     ctx.register_tool(
+        name="factory_start",
+        toolset="dark_factory",
+        schema={
+            "name": "factory_start",
+            "description": "Start one durable Beads-backed Dark Factory supervisor. Requires explicit unattended authorization; per-session watchdogs recover into fresh Hermes sessions and do not impose a mission-wide time limit.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    **COMMON_PATH_PROPERTIES,
+                    "profile": {
+                        "type": "string",
+                        "description": "Named Hermes profile to use for all durable worker/reviewer sessions.",
+                    },
+                    "allow_unattended": {
+                        "type": "boolean",
+                        "description": "Explicit human authorization to launch a detached unattended build supervisor.",
+                    },
+                    "bd_executable": {"type": "string"},
+                    "hermes_executable": {"type": "string"},
+                    "poll_seconds": {"type": "integer", "minimum": 1},
+                    "worker_timeout_seconds": {"type": "integer", "minimum": 1},
+                },
+                "required": ["allow_unattended"],
+            },
+        },
+        handler=_handle_start,
+    )
+    ctx.register_tool(
         name="factory_transition",
         toolset="dark_factory",
         schema={
             "name": "factory_transition",
-            "description": "Apply one deterministic milestone/slice transition and atomically record its evidence. Invalid transitions and exhausted retry budgets are refused.",
+            "description": "Apply one deterministic milestone/slice transition and atomically record its evidence. Locally fixable review failures expose a bounded continuation; repeated failures and exhausted budgets are refused.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -1417,7 +1495,10 @@ def register(ctx: Any) -> None:
                         "type": "string",
                         "enum": [
                             "start_milestone",
+                            "resume_milestone",
                             "start_slice",
+                            "resume_slice",
+                            "continue_slice",
                             "record_failure",
                             "request_review",
                             "request_changes",
@@ -1478,7 +1559,7 @@ def register(ctx: Any) -> None:
         toolset="dark_factory",
         schema={
             "name": "factory_beads_plan",
-            "description": "Project the validated mission into a deterministic Beads mission/milestone/functional-slice graph without mutating Beads.",
+            "description": "Project the validated mission into a deterministic Beads mission/milestone/functional-block graph without mutating Beads.",
             "parameters": {"type": "object", "properties": dict(COMMON_PATH_PROPERTIES), "required": []},
         },
         handler=_handle_beads_plan,

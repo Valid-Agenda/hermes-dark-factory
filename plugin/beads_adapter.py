@@ -146,9 +146,18 @@ def _slice_description(manifest: dict[str, Any], item: dict[str, Any]) -> str:
     }
     decision_rows = [
         f"[{decision_id}] {str(decisions.get(str(decision_id), {}).get('statement') or '').strip()}"
-        for decision_id in item.get("requires_decisions", [])
+        for decision_id in (
+            item.get("requires_decisions", [])
+            if isinstance(item.get("requires_decisions", []), list)
+            else []
+        )
     ]
-    decision_text = "; ".join(decision_rows) or "None declared for this slice; do not infer additional shared decisions."
+    decision_text = "; ".join(decision_rows) or "None declared for this block; do not infer additional shared decisions."
+    story_ids = [
+        str(value).strip()
+        for value in (item.get("story_ids") if isinstance(item.get("story_ids"), list) else [item.get("story_id")])
+        if str(value).strip()
+    ]
     paths = [str(path).strip() for path in item.get("paths", []) if str(path).strip()]
     surfaces = [
         str(surface).strip()
@@ -164,7 +173,8 @@ def _slice_description(manifest: dict[str, Any], item: dict[str, Any]) -> str:
 
     return (
         f"Factory-Milestone:\n[{mid}] {str(milestone.get('outcome') or '').strip()}\n\n"
-        f"Factory-Slice:\n[{sid}] {str(item.get('outcome') or '').strip()}\n\n"
+        f"Factory-Functional-Block:\n[{sid}] {str(item.get('outcome') or '').strip()}\n\n"
+        f"Owned stories:\n{', '.join(story_ids)}\n\n"
         f"Outcome:\n{str(item.get('outcome') or '').strip()}\n\n"
         "Boundaries:\n"
         f"- Allowed paths/interfaces: {', '.join(paths)}\n"
@@ -174,13 +184,15 @@ def _slice_description(manifest: dict[str, Any], item: dict[str, Any]) -> str:
         f"Evidence:\n{evidence}\n\n"
         "Forbidden:\n"
         "- Do not write outside the allowed paths/interfaces or override a locked decision.\n"
-        "- Do not create micro-beads for debugging, test fixes, remediation, or review comments; keep that work in this slice.\n"
+        "- Do not create micro-beads for thin slices, debugging, test fixes, remediation, or review comments; keep that work in this block.\n"
         "- Do not treat card completion, a generic done, or a green build alone as acceptance proof.\n\n"
         "Handoff:\n"
-        f"- Submit the candidate SHA, changed allowed paths, and exact receipts mapped to the criterion IDs for independent review by {', '.join(review_roles)}.\n"
-        f"- Return the reviewed slice to the integrator for milestone {mid}; reviewers remain read-only.\n\n"
+        f"- Submit the candidate SHA, changed allowed paths, and exact receipts mapped to the criterion IDs.\n"
+        f"- Return the completed block to the integrator for milestone {mid}; independent review occurs at milestone delivery{(' by ' + ', '.join(review_roles)) if review_roles else ''}.\n\n"
+        "Continue:\n"
+        f"- After a local review rejection, use the next continuation descriptor for this block and produce a new candidate; do not end the mission while bounded continuation remains.\n\n"
         "Stop / escalate:\n"
-        f"- Stop after {repeated_failure_limit} materially similar failures or {remediation_limit} remediation cycle; escalate instead of retrying unchanged work.\n"
+        f"- Continue up to {remediation_limit} bounded remediation cycles after the initial candidate. Then escalate instead of retrying unchanged work; materially similar failure {repeated_failure_limit} times also stops the block.\n"
         "- Stop on path overlap, unavailable evidence commands/scenarios, contradictory receipts, or conflict with a shared locked decision."
     )
 
@@ -325,7 +337,7 @@ def build_graph_plan(manifest: dict[str, Any], *, validate: bool = True) -> dict
             manifest,
             digest=digest,
             key=key,
-            entity_type="functional_slice",
+            entity_type="functional_block",
             entity_id=sid,
             title=str(item.get("outcome") or sid),
             issue_type="task",

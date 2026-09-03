@@ -119,7 +119,7 @@
     "max_active_milestones": 1,
     "max_parallel_slices": 2,
     "repeated_failure_limit": 2,
-    "max_remediation_cycles": 1
+    "max_remediation_cycles": 3
   },
   "decisions": [
     {

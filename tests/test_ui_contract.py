@@ -19,8 +19,8 @@ PRESET_MODELS = (
     "openai-codex/gpt-5.6-luna",
 )
 GRAPH_COPY = (
-    "Mission → milestone epics → functional-slice tasks",
-    "No micro-beads for test fixes or review comments",
+    "Mission → milestone epics → complete functional-block tasks",
+    "Thin slices, test fixes, and review comments stay inside the block",
     "Beads owns the work graph while the Dark Factory ledger owns acceptance and evidence",
 )
 
@@ -350,7 +350,7 @@ def canonical_payload() -> dict:
             "max_active_milestones": 1,
             "max_parallel_slices": 2,
             "repeated_failure_limit": 2,
-            "max_remediation_cycles": 1,
+            "max_remediation_cycles": 3,
         },
     }
 

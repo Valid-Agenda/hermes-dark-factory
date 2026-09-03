@@ -279,7 +279,7 @@ class BeadsGraphPlanTests(unittest.TestCase):
         self.assertIn("Evidence:", first_slice["description"])
         self.assertIn("Forbidden:", first_slice["description"])
         self.assertIn("Stop / escalate:", first_slice["description"])
-        self.assertEqual(first_slice["metadata"]["dark_factory_entity_type"], "functional_slice")
+        self.assertEqual(first_slice["metadata"]["dark_factory_entity_type"], "functional_block")
         self.assertEqual(first_slice["metadata"]["execution_configured_role"], "builder")
         self.assertEqual(first_slice["metadata"]["execution_agent_type"], "worker")
         self.assertEqual(

@@ -12,16 +12,16 @@ The recommended design is a thin, opinionated **milestone control plane** on top
 
 - one persistent frontier-model **integrator** owns mission intent and integration;
 - one active milestone at a time;
-- at most two disjoint functional slices/workers;
-- edit/test/debug micro-steps stay inside the active slice and session;
+- at most two disjoint functional blocks/workers;
+- thin top-to-bottom slices and edit/test/debug micro-steps stay inside the active block and session;
 - milestone acceptance is measured by held-out user/system scenarios;
-- one risk-proportionate independent review targets an exact candidate;
-- one automatic remediation is allowed;
-- a second materially similar failure triggers **replanning**, not another card;
+- one risk-proportionate independent review targets an exact milestone candidate;
+- a worker timeout/context boundary resumes the same block in a fresh session;
+- repeated materially identical failure triggers **replanning**, not another card;
 - Kanban is used for durability, dependencies and human gates, not as the coding loop;
 - deterministic plugin guards enforce the parts prompts repeatedly fail to preserve.
 
-This is materially closer to **Factory Missions + StrongDM scenario validation + Kilroy checkpoints**, with selected Gas Town durability patterns and Ralph’s fresh-context handoff. It deliberately rejects Gas Town’s scale and Ralph’s unlimited eventual-consistency loop.
+This is materially closer to **Factory Missions + StrongDM scenario validation + Kilroy checkpoints**, with selected Gas Town durability patterns and Ralph’s fresh-context handoff. It deliberately rejects Gas Town’s scale and Ralph’s unlimited eventual-consistency loop. The durable unit is a complete functional block—for example, a complete home page with its login/payment wiring—not a thin end-to-end scaffold.
 
 A working prototype exists in this repository. The research report describes design evidence only; it does not enable a profile or change an external board or repository.
 
@@ -287,9 +287,9 @@ Other policy:
 
 - Kanban off by default for ordinary coding inside one integrator session.
 - No goal-mode cards for implementation milestones.
-- Kanban cards only for durable functional slices, real dependencies, human gates or cross-session ownership.
-- One reviewer after a consequential block; specialist reviewers only for named high-risk surfaces.
-- One automatic remediation; then replan.
+- Kanban cards only for durable functional blocks, real dependencies, human gates or cross-session ownership.
+- Independent verifier/adversary/holdout review targets the integrated milestone candidate, not each routine block.
+- Fresh worker sessions may resume a block; repeated identical failure, not a timer, triggers replan.
 - Full suite and realistic scenario validation at milestone boundaries, not each edit.
 
 ## 6. Tested prototype
@@ -300,7 +300,7 @@ Location: repository root
 
 `plugin/skills/dark-factory/SKILL.md` defines:
 
-- mission → milestone → functional slice → micro-step hierarchy;
+- mission → milestone → functional block → thin-slice/micro-step hierarchy;
 - three nested loops;
 - WIP and review policy;
 - Kanban/delegation contracts;

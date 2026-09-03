@@ -26,7 +26,7 @@ from plugin import (
     initial_state,
     register,
 )
-from plugin.engine import transition
+from plugin.engine import _attest_state, transition
 from hermes_test_stubs import ensure_inventory_module
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -1403,6 +1403,67 @@ Stop: Escalate on scope conflict, repeated failure, or unavailable prerequisites
             self.assertEqual(blocked["action"], "block")
             self.assertIn("exact compiled", blocked["message"])
             self.assertIsNone(allowed)
+
+    def test_strict_delegation_accepts_only_an_explicit_bounded_continuation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            manifest_path = root / "manifest.json"
+            state_path = root / "state.json"
+            manifest = copy.deepcopy(TEMPLATE)
+            manifest["mission"]["workspace_path"] = str(ROOT)
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            state = initial_state(manifest)
+            integrator = {
+                "session_id": "integrator-session",
+                **manifest["models"]["integrator"],
+            }
+            builder = {
+                "session_id": "builder-session",
+                **manifest["models"]["builder"],
+            }
+            transition(manifest, state, "M1", "start_milestone", trusted_actor=integrator)
+            transition(manifest, state, "M1-S1", "start_slice", trusted_actor=builder)
+            candidate_sha = subprocess.check_output(
+                ["git", "-C", str(ROOT), "rev-parse", "HEAD"], text=True
+            ).strip()
+            state["slices"]["M1-S1"]["candidate_sha"] = candidate_sha
+            state["slices"]["M1-S1"]["last_rejected_sha"] = candidate_sha
+            state["slices"]["M1-S1"]["remediation_cycles"] = 1
+            _attest_state(state)
+            state_path.write_text(json.dumps(state), encoding="utf-8")
+
+            goal = """Factory-Milestone: M1
+Factory-Slice: M1-S1
+Outcome: The server persists a verified user's project and enforces ownership on every read
+Boundaries: Edit only src/domain/projects/**, src/server/projects/**, and tests/projects/**.
+Acceptance: The compiled acceptance criteria pass against the bounded candidate.
+Evidence: Run the focused deterministic scenario and preserve raw receipts.
+Forbidden: Do not edit factory control state or publish artifacts.
+Handoff: Return changed coordinates and observed checks to the integrator.
+Stop: Escalate on scope conflict, repeated failure, or unavailable prerequisites.
+"""
+            environment = {
+                "HERMES_FACTORY_STRICT": "1",
+                "HERMES_FACTORY_ROLE": "integrator",
+                "HERMES_FACTORY_MANIFEST": str(manifest_path),
+                "HERMES_FACTORY_STATE": str(state_path),
+            }
+            continuation = {
+                "title": "Continue M1-S1 remediation",
+                "action": "continue_slice",
+                "goal": goal,
+            }
+            wrong_action = {**continuation, "action": "start_slice"}
+            with mock.patch.dict(os.environ, environment, clear=True):
+                allowed = _pre_tool_guard(
+                    tool_name="delegate_task", args={"tasks": [continuation]}
+                )
+                blocked = _pre_tool_guard(
+                    tool_name="delegate_task", args={"tasks": [wrong_action]}
+                )
+            self.assertIsNone(allowed)
+            self.assertEqual(blocked["action"], "block")
+            self.assertIn("exact compiled", blocked["message"])
 
     def test_strict_delegation_requires_coordinates_and_disjoint_worker_paths(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

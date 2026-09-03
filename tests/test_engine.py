@@ -154,12 +154,12 @@ class ManifestTests(unittest.TestCase):
         self.assertFalse(result["valid"])
         self.assertTrue(any("high-risk surface" in item for item in result["errors"]))
 
-    def test_high_risk_slice_requires_review(self) -> None:
+    def test_high_risk_block_can_use_milestone_scoped_review(self) -> None:
         manifest = copy.deepcopy(TEMPLATE)
         manifest["slices"][0]["review_required"] = False
+        manifest["slices"][0]["review_roles"] = []
         result = validate_manifest(manifest)
-        self.assertFalse(result["valid"])
-        self.assertTrue(any("independent review" in item for item in result["errors"]))
+        self.assertTrue(result["valid"], result)
 
     def test_schema_v2_cannot_bypass_required_intake_controls(self) -> None:
         mutations = {
@@ -385,7 +385,7 @@ class ManifestTests(unittest.TestCase):
             "active-milestones": lambda value: value["policy"].update({"max_active_milestones": 2}),
             "parallel-slices": lambda value: value["policy"].update({"max_parallel_slices": 3}),
             "failure-limit": lambda value: value["policy"].update({"repeated_failure_limit": 3}),
-            "remediation-limit": lambda value: value["policy"].update({"max_remediation_cycles": 2}),
+            "remediation-limit": lambda value: value["policy"].update({"max_remediation_cycles": 4}),
             "unknown-policy": lambda value: value["policy"].update({"unattended_dispatch": True}),
             "one-character-decision": lambda value: value["decisions"][0].update({"statement": "x"}),
             "one-character-security-decision": lambda value: value["security"]["authority_decisions"][0].update({"statement": "x"}),
@@ -540,7 +540,7 @@ class StateMachineTests(unittest.TestCase):
         if actor is _DEFAULT_ACTOR:
             actor = (
                 self.builder_actor
-                if action in {"start_slice", "record_failure", "request_review"}
+                if action in {"start_slice", "resume_slice", "continue_slice", "record_failure", "request_review"}
                 else self.integrator_actor
             )
         return transition(
@@ -637,6 +637,103 @@ class StateMachineTests(unittest.TestCase):
             verdict="PASS",
             session_id="session-holdout",
         )
+
+    def test_resume_slice_rebinds_a_fresh_worker_without_spending_remediation(self) -> None:
+        self.milestone_transition("M1", "start_milestone")
+        self.state_transition("M1-S1", "start_slice")
+        fresh_builder = builder_actor(self.manifest, session_id="fresh-worker-session")
+        self.state_transition(
+            "M1-S1",
+            "resume_slice",
+            {"reason": "the disposable worker session timed out before producing a candidate"},
+            trusted_actor=fresh_builder,
+        )
+        self.assertEqual(self.state["slices"]["M1-S1"]["attempt"], 1)
+        self.assertEqual(
+            self.state["slices"]["M1-S1"]["builder_authority"]["session_id"],
+            "fresh-worker-session",
+        )
+        self.assertIn("M1-S1", next_actions(self.manifest, self.state)["resume_slices"])
+
+    def test_milestone_scoped_reviews_are_required_after_complete_blocks(self) -> None:
+        self.manifest = copy.deepcopy(TEMPLATE)
+        self.manifest["mission"]["workspace_path"] = str(ROOT)
+        for slice_spec in self.manifest["slices"]:
+            slice_spec["review_required"] = False
+            slice_spec["review_roles"] = []
+        self.state = initial_state(self.manifest)
+        self.integrator_actor = integrator_actor(self.manifest)
+        self.builder_actor = builder_actor(self.manifest)
+        self.milestone_transition("M1", "start_milestone")
+        self.state_transition("M1-S1", "start_slice")
+        self.state_transition(
+            "M1-S1",
+            "complete_slice",
+            {
+                "candidate_sha": self.sha,
+                "checks": self.check_receipts("M1-S1"),
+                "acceptance_passed": [item["id"] for item in self.manifest["slices"][0]["acceptance"]],
+            },
+        )
+        self.state_transition("M1-S2", "start_slice")
+        self.state_transition(
+            "M1-S2",
+            "complete_slice",
+            {
+                "candidate_sha": self.sha2,
+                "checks": self.check_receipts("M1-S2", candidate_sha=self.sha2),
+                "acceptance_passed": [item["id"] for item in self.manifest["slices"][1]["acceptance"]],
+            },
+        )
+        self.milestone_transition("M1", "validate_milestone")
+        milestone_criteria = [item["id"] for item in self.manifest["milestones"][0]["acceptance"]]
+        with tempfile.TemporaryDirectory() as tmp:
+            scenario = Path(tmp) / "milestone.json"
+            scenario.write_text('{"result":"pass"}\n', encoding="utf-8")
+            reviews = [
+                issue_review_receipt(
+                    self.manifest,
+                    role=role,
+                    entity_id="M1",
+                    candidate_sha=self.sha2,
+                    reviewer=f"milestone-{role}",
+                    provider=self.manifest["models"][role]["provider"],
+                    model=self.manifest["models"][role]["model"],
+                    verdict="PASS",
+                    session_id=f"milestone-{role}-session",
+                )
+                for role in ("verifier", "adversary")
+            ]
+            self.milestone_transition(
+                "M1",
+                "complete_milestone",
+                {
+                    "integration_sha": self.sha2,
+                    "acceptance_passed": milestone_criteria,
+                    "scenario_receipts": [self.scenario_receipt(scenario, milestone_criteria)],
+                    "holdout_review": self.holdout_evidence(self.sha2),
+                    "independent_reviews": reviews,
+                },
+            )
+        self.assertEqual(self.state["milestones"]["M1"]["status"], "completed")
+
+    def test_review_transition_is_rejected_for_milestone_scoped_block(self) -> None:
+        manifest = copy.deepcopy(TEMPLATE)
+        manifest["mission"]["workspace_path"] = str(ROOT)
+        manifest["slices"][0]["review_required"] = False
+        manifest["slices"][0]["review_roles"] = []
+        state = initial_state(manifest)
+        transition(manifest, state, "M1", "start_milestone", trusted_actor=integrator_actor(manifest))
+        transition(manifest, state, "M1-S1", "start_slice", trusted_actor=builder_actor(manifest))
+        with self.assertRaises(FactoryError):
+            transition(
+                manifest,
+                state,
+                "M1-S1",
+                "request_review",
+                {"candidate_sha": self.sha, "checks": self.check_receipts("M1-S1")},
+                trusted_actor=builder_actor(manifest),
+            )
 
     def test_happy_path(self) -> None:
         self.milestone_transition("M1", "start_milestone")
@@ -746,7 +843,7 @@ class StateMachineTests(unittest.TestCase):
         self.assertEqual(first["provider"], self.manifest["models"]["builder"]["provider"])
         self.assertEqual(first["model"], self.manifest["models"]["builder"]["model"])
         self.assertEqual(first["reasoning_effort"], "medium")
-        self.assertEqual(first["execution_mode"], "functional_slice")
+        self.assertEqual(first["execution_mode"], "functional_block")
         self.assertFalse(first["auto_launch"])
 
     def test_first_milestone_start_binds_attested_integrator_authority(self) -> None:
@@ -1365,10 +1462,87 @@ class StateMachineTests(unittest.TestCase):
             failure_fingerprint("pytest failed at 2026-08-31T10:00:00Z: expected 200 got 500"),
         )
 
-    def test_second_remediation_forces_replan(self) -> None:
+    def test_review_rejection_exposes_bounded_continuation_and_new_candidate(self) -> None:
         self.milestone_transition("M1", "start_milestone")
         self.state_transition("M1-S1", "start_slice")
-        for index, candidate_sha in enumerate((self.sha, self.sha2)):
+        self.state_transition(
+            "M1-S1",
+            "request_review",
+            {"candidate_sha": self.sha, "checks": self.check_receipts(candidate_sha=self.sha)},
+        )
+        self.state_transition("M1-S1", "request_changes", {"findings": ["finding-0"]})
+
+        following = next_actions(self.manifest, self.state)
+        self.assertEqual(following["continuation_slices"], ["M1-S1"])
+        self.assertEqual(
+            following["dispatch"]["continuation_slices"][0]["action"],
+            "continue_slice",
+        )
+        self.assertEqual(
+            following["dispatch"]["continuation_slices"][0]["execution_mode"],
+            "remediation",
+        )
+
+        replacement_builder = builder_actor(self.manifest, "remediation-builder-session")
+        self.state_transition(
+            "M1-S1",
+            "continue_slice",
+            {"reason": "Replace the rejected approach with an atomic state update."},
+            trusted_actor=replacement_builder,
+        )
+        self.assertEqual(self.state["slices"]["M1-S1"]["attempt"], 2)
+        self.assertIsNone(self.state["slices"]["M1-S1"]["candidate_sha"])
+        self.assertEqual(self.state["slices"]["M1-S1"]["last_rejected_sha"], self.sha)
+        self.assertEqual(
+            self.state["slices"]["M1-S1"]["builder_authority"], replacement_builder
+        )
+        self.assertEqual(next_actions(self.manifest, self.state)["continuation_slices"], [])
+
+        with self.assertRaisesRegex(FactoryError, "different candidate_sha"):
+            self.state_transition(
+                "M1-S1",
+                "request_review",
+                {"candidate_sha": self.sha, "checks": self.check_receipts(candidate_sha=self.sha)},
+                trusted_actor=replacement_builder,
+            )
+        self.state_transition(
+            "M1-S1",
+            "request_review",
+            {"candidate_sha": self.sha2, "checks": self.check_receipts(candidate_sha=self.sha2)},
+            trusted_actor=replacement_builder,
+        )
+        self.assertEqual(self.state["slices"]["M1-S1"]["status"], "review")
+
+    def test_remediation_budget_still_forces_replan_after_continuation(self) -> None:
+        self.manifest["policy"]["max_remediation_cycles"] = 1
+        self.state = initial_state(self.manifest)
+        self.milestone_transition("M1", "start_milestone")
+        self.state_transition("M1-S1", "start_slice")
+        self.state_transition(
+            "M1-S1",
+            "request_review",
+            {"candidate_sha": self.sha, "checks": self.check_receipts(candidate_sha=self.sha)},
+        )
+        self.state_transition("M1-S1", "request_changes", {"findings": ["finding-0"]})
+        self.state_transition("M1-S1", "continue_slice", {"reason": "Try the bounded fix."})
+        self.state_transition(
+            "M1-S1",
+            "request_review",
+            {"candidate_sha": self.sha2, "checks": self.check_receipts(candidate_sha=self.sha2)},
+        )
+        self.state_transition("M1-S1", "request_changes", {"findings": ["finding-1"]})
+        self.assertEqual(self.state["slices"]["M1-S1"]["status"], "replan_required")
+
+    def test_default_budget_allows_three_distinct_remediation_cycles(self) -> None:
+        candidates = [
+            subprocess.check_output(
+                ["git", "-C", str(ROOT), "rev-parse", f"HEAD~{index}"], text=True
+            ).strip()
+            for index in range(4)
+        ]
+        self.milestone_transition("M1", "start_milestone")
+        self.state_transition("M1-S1", "start_slice")
+        for index, candidate_sha in enumerate(candidates):
             self.state_transition(
                 "M1-S1",
                 "request_review",
@@ -1379,7 +1553,12 @@ class StateMachineTests(unittest.TestCase):
                 "request_changes",
                 {"findings": [f"finding-{index}"]},
             )
-        self.assertEqual(self.state["slices"]["M1-S1"]["status"], "replan_required")
+            if index < 3:
+                self.assertEqual(self.state["slices"]["M1-S1"]["status"], "active")
+                self.assertEqual(next_actions(self.manifest, self.state)["continuation_slices"], ["M1-S1"])
+                self.state_transition("M1-S1", "continue_slice", {"reason": f"Try approach {index + 1}."})
+            else:
+                self.assertEqual(self.state["slices"]["M1-S1"]["status"], "replan_required")
 
     def test_missing_acceptance_cannot_complete(self) -> None:
         self.milestone_transition("M1", "start_milestone")

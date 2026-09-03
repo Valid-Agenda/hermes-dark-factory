@@ -23,7 +23,7 @@ const SOL_ORCHESTRATOR = { provider: 'openai-codex', model: 'gpt-5.6-sol-900k' }
 const LUNA_WORKER = { provider: 'openai-codex', model: 'gpt-5.6-luna' }
 const ROLES = [
   ['integrator', 'Orchestrator / Integrator', 'Owns mission intent, shared contracts, integration, and milestone gates.'],
-  ['builder', 'Worker / Builder', 'Implements bounded functional slices and focused checks.'],
+  ['builder', 'Worker / Builder', 'Implements complete functional blocks and focused checks.'],
   ['verifier', 'Verifier', 'Validates acceptance evidence independently from implementation.'],
   ['adversary', 'Adversary', 'Challenges security, failure, and boundary assumptions.'],
   ['holdout', 'Holdout', 'Judges milestone evidence with a fresh context and external oracle.']
@@ -47,7 +47,7 @@ function defaultPolicy(value) {
     max_active_milestones: Number(source.max_active_milestones) || 1,
     max_parallel_slices: Number(source.max_parallel_slices) || 2,
     repeated_failure_limit: Number(source.repeated_failure_limit) || 2,
-    max_remediation_cycles: Number(source.max_remediation_cycles) || 1
+    max_remediation_cycles: Number(source.max_remediation_cycles) || 3
   }
 }
 
@@ -1716,7 +1716,7 @@ function DarkFactoryPage({ rest, projectId = '' }) {
                       className: 'rounded-[4px] border border-primary/25 bg-primary/5 p-3',
                       children: [
                         jsx('p', { className: 'text-xs font-semibold text-(--ui-text-primary)', children: 'Kryptonite adversarial gate — always on' }),
-                        jsx('p', { className: 'mt-1 text-[0.6875rem] leading-4 text-(--ui-text-tertiary)', children: 'Every slice requires a fresh verifier and adversary review. The builder cannot disable or self-approve this gate.' })
+                        jsx('p', { className: 'mt-1 text-[0.6875rem] leading-4 text-(--ui-text-tertiary)', children: 'Every functional block is completed with focused evidence; verifier, adversary, and holdout review run at the milestone delivery gate.' })
                       ]
                     }),
                     jsx(Field, {
@@ -1813,7 +1813,7 @@ function DarkFactoryPage({ rest, projectId = '' }) {
                         jsx('h3', { className: 'text-xs font-semibold text-(--ui-text-primary)', children: 'Execution graph backend' }),
                         jsx('p', {
                           className: 'mt-1 text-[0.6875rem] leading-4 text-(--ui-text-tertiary)',
-                          children: 'Mission → milestone epics → functional-slice tasks. No micro-beads for test fixes or review comments.'
+                          children: 'Mission → milestone epics → complete functional-block tasks. Thin slices, test fixes, and review comments stay inside the block.'
                         }),
                         jsx('p', {
                           className: 'mt-2 rounded-[4px] bg-(--ui-bg-secondary) p-2 text-[0.6875rem] leading-4 text-(--ui-text-secondary)',

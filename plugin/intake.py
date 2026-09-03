@@ -161,7 +161,7 @@ def default_setup() -> dict[str, Any]:
             "max_active_milestones": 1,
             "max_parallel_slices": 2,
             "repeated_failure_limit": 2,
-            "max_remediation_cycles": 1,
+            "max_remediation_cycles": 3,
         },
     }
 
@@ -385,6 +385,18 @@ def _normalise_setup(value: Any, *, reject_unknown: bool) -> dict[str, Any]:
             {
                 **{key: copy.deepcopy(item.get(key)) for key in ("id", "title", "outcome")},
                 "story_ids": _allowed_list(item.get("story_ids")),
+                "blocks": [
+                    {
+                        **{key: copy.deepcopy(block.get(key)) for key in ("id", "title", "outcome")},
+                        "story_ids": _allowed_list(block.get("story_ids")),
+                        "depends_on": _allowed_list(block.get("depends_on")),
+                        "paths": _allowed_list(block.get("paths")),
+                        "acceptance": _normalised_acceptance_rows(block.get("acceptance")),
+                        "evidence": _allowed_list(block.get("evidence")),
+                    }
+                    for block in _allowed_list(item.get("blocks"))
+                    if isinstance(block, dict)
+                ],
                 "evidence": _allowed_list(item.get("evidence")),
                 "acceptance": _normalised_acceptance_rows(item.get("acceptance")),
             }
@@ -633,6 +645,43 @@ def validate_intake(setup_value: Any, model_catalog: Any = None) -> dict[str, An
             and all(_criterion_type(item) in ACCEPTANCE_TYPES for item in acceptance)
             and all(_words(_criterion_statement(item)) >= 5 for item in acceptance)
         )
+        blocks = [item for item in _list(milestone.get("blocks")) if isinstance(item, dict)]
+        if blocks:
+            block_ids = [_text(item.get("id")) for item in blocks]
+            block_story_ids: list[str] = []
+            blocks_ok = bool(blocks) and len(set(block_ids)) == len(block_ids)
+            for block_index, block in enumerate(blocks):
+                block_id = _text(block.get("id")) or f"{mid}-B{block_index + 1}"
+                owned = [_text(item) for item in _list(block.get("story_ids")) if _text(item)]
+                paths = [_text(item) for item in _list(block.get("paths")) if _text(item)]
+                block_story_ids.extend(owned)
+                block_ok = (
+                    bool(_text(block.get("id")))
+                    and _words(block.get("outcome")) >= 7
+                    and not MICRO_TITLE.search(_text(block.get("outcome")))
+                    and bool(owned)
+                    and len(set(owned)) == len(owned)
+                    and set(owned).issubset(set(mapped))
+                    and bool(paths)
+                    and len(paths) == len(_list(block.get("paths")))
+                )
+                if not block_ok:
+                    blocks_ok = False
+                    blockers.append(_issue(
+                        "functional_block.incomplete",
+                        f"milestones[{index}].blocks[{block_index}]",
+                        f"Functional block {block_id} is not a complete product area contract.",
+                        "Give the block a unique ID, substantial outcome, owned story IDs, and explicit paths/interfaces for its required wiring.",
+                    ))
+            if sorted(block_story_ids) != sorted(mapped) or len(block_story_ids) != len(set(block_story_ids)):
+                blocks_ok = False
+                blockers.append(_issue(
+                    "functional_block.story_mapping",
+                    f"milestones[{index}].blocks",
+                    f"Functional blocks in {mid} must partition its mapped stories exactly once.",
+                    "Group related stories into complete product areas, but do not omit or duplicate a story across blocks.",
+                ))
+            milestone_ok = milestone_ok and blocks_ok
         if not milestone_ok:
             milestones_valid = False
             blockers.append(_issue("milestone.incomplete", f"milestones[{index}]", f"Milestone {mid} is not a coherent, accepted product increment.", "Give it a unique ID, observable outcome, mapped stories and milestone-level acceptance criteria."))
@@ -710,7 +759,7 @@ def validate_intake(setup_value: Any, model_catalog: Any = None) -> dict[str, An
         "max_active_milestones": (1, 1),
         "max_parallel_slices": (1, 2),
         "repeated_failure_limit": (1, 2),
-        "max_remediation_cycles": (1, 1),
+        "max_remediation_cycles": (1, 3),
     }
     policy_ok = all(
         isinstance(policy.get(key), int)
@@ -718,7 +767,7 @@ def validate_intake(setup_value: Any, model_catalog: Any = None) -> dict[str, An
         and minimum <= policy[key] <= maximum
         for key, (minimum, maximum) in policy_bounds.items()
     ) and set(policy) == POLICY_FIELDS
-    check("plan", "policy.valid", policy_ok, 3, "policy", "Use bounded factory concurrency, retry, and remediation limits.", "Allow one active milestone, at most two parallel slices, at most two identical failures, and one remediation cycle.")
+    check("plan", "policy.valid", policy_ok, 3, "policy", "Use bounded factory concurrency, retry, and remediation limits.", "Allow one active milestone, at most two parallel slices, at most two identical failures, and up to three bounded remediation cycles.")
 
     model_policy = setup.get("model_policy") if isinstance(setup.get("model_policy"), dict) else {}
     check(
@@ -880,32 +929,78 @@ def compile_manifest(setup_value: Any, model_catalog: Any = None) -> dict[str, A
         mid = _text(source.get("id")) or f"M{m_index}"
         story_ids = [_text(item) for item in source.get("story_ids", []) if _text(item)]
         slice_ids: list[str] = []
+        configured_blocks = [
+            item for item in _list(source.get("blocks")) if isinstance(item, dict)
+        ]
+        if configured_blocks:
+            block_sources = configured_blocks
+            block_id_prefix = "B"
+        else:
+            # Legacy guided setups had no block declaration. Preserve their
+            # generated IDs and one-story ownership while adopting the new
+            # milestone-scoped review cadence for fresh compilations.
+            block_sources = [
+                {
+                    "id": f"{mid}-S{s_index}",
+                    "outcome": f"{_text(story_by_id[story_id].get('persona_id'))} can {_text(story_by_id[story_id].get('want'))} so that {_text(story_by_id[story_id].get('so_that'))}",
+                    "story_ids": [story_id],
+                    "paths": [_text(item) for item in story_by_id[story_id].get("paths", []) if _text(item)],
+                    "depends_on": [],
+                }
+                for s_index, story_id in enumerate(story_ids, start=1)
+            ]
+            block_id_prefix = "S"
         previous_sid = ""
-        for s_index, story_id in enumerate(story_ids, start=1):
-            story = story_by_id[story_id]
-            sid = f"{mid}-S{s_index}"
-            story_to_milestone[story_id] = mid
+        for s_index, block in enumerate(block_sources, start=1):
+            block_story_ids = [_text(item) for item in _list(block.get("story_ids")) if _text(item)]
+            if not block_story_ids:
+                continue
+            sid = _text(block.get("id")) or f"{mid}-{block_id_prefix}{s_index}"
+            for story_id in block_story_ids:
+                story_to_milestone[story_id] = mid
             slice_ids.append(sid)
+            owned_stories = [story_by_id[story_id] for story_id in block_story_ids]
+            acceptance = [
+                criterion
+                for story in owned_stories
+                for criterion in _criterion_rows(story.get("acceptance"), story.get("id", ""))
+            ]
             evidence = list(testing.get("focused_commands", []))
+            evidence.extend(_text(item) for item in _list(block.get("evidence")) if _text(item))
             evidence.extend(
                 f"acceptance scenario: {_criterion_statement(item)}"
-                for item in story.get("acceptance", [])
+                for story in owned_stories
+                for item in _list(story.get("acceptance"))
                 if _criterion_statement(item)
             )
+            dependencies = [
+                _text(item) for item in _list(block.get("depends_on")) if _text(item)
+            ]
+            if not dependencies and not configured_blocks and previous_sid:
+                dependencies = [previous_sid]
+            paths = [_text(item) for item in _list(block.get("paths")) if _text(item)]
+            if not paths:
+                paths = [
+                    _text(item)
+                    for story in owned_stories
+                    for item in _list(story.get("paths"))
+                    if _text(item)
+                ]
             slices.append({
                 "id": sid,
-                "story_id": story_id,
+                "story_id": block_story_ids[0],
+                "story_ids": block_story_ids,
                 "milestone_id": mid,
-                "outcome": f"{_text(story.get('persona_id'))} can {_text(story.get('want'))} so that {_text(story.get('so_that'))}",
+                "outcome": _text(block.get("outcome")),
                 "risk": risk,
                 "risk_triggers": risk_triggers,
                 "requires_decisions": decision_ids,
-                "depends_on": [previous_sid] if previous_sid else [],
-                "paths": [_text(item) for item in story.get("paths", []) if _text(item)],
-                "acceptance": _criterion_rows(story.get("acceptance"), sid),
+                "depends_on": dependencies,
+                "paths": paths,
+                "acceptance": acceptance,
                 "evidence": evidence,
-                "review_required": True,
-                "review_roles": ["verifier", "adversary"],
+                "review_required": False,
+                "review_roles": [],
             })
             previous_sid = sid
         milestones.append({

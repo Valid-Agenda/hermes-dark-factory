@@ -505,6 +505,7 @@ class OfflineCliContractTests(unittest.TestCase):
     def test_transition_is_disabled_for_every_role_action_and_strict_mode(self) -> None:
         actions = (
             "start_slice",
+            "continue_slice",
             "record_failure",
             "request_review",
             "request_changes",

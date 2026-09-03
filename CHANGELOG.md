@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.0 — bounded autonomous remediation
+
+### Added
+
+- Explicit `continue_slice` transitions and dispatch descriptors after a local review rejection.
+- Functional blocks are now the durable build unit; thin slices and semantic edits remain inside a block. The compatibility manifest key remains `slices` and supports grouped `story_ids`.
+- Fresh-session `resume_slice` and `resume_milestone` transitions do not consume semantic remediation budget.
+- Milestone-scoped verifier, adversary, and holdout review for newly compiled blocks.
+- Detached Beads-backed supervisor with durable process/run metadata, claims, requeue, fresh Hermes launches, and no mission-wide wall-clock limit.
+- Fresh builder handoff support with attested builder-authority history.
+- Three remediation cycles by default, while retaining repeated-failure and budget circuit breakers.
+- Strict delegation checks that accept only startable, resumable, or explicitly continuable functional blocks.
+- Plain-language continuation/stop guidance so the integrator does not end a mission while a safe continuation remains.
+
 ## 0.4.0 — desktop project workspace candidate
 
 ### Added
@@ -37,6 +51,5 @@
 
 ### Known limitations
 
-- The Beads backend does not provide a long-running claimant/dispatcher or unattended reconciliation loop.
 - The prototype's process-local attestation signer intentionally fails closed across runtime restarts; production requires a durable audited attestation service.
-- This release is for controlled local pilots only. It does not authorize deployment, public publishing, spending, or external communications.
+- The supervisor is for controlled local pilots only. It does not authorize deployment, public publishing, spending, or external communications, and explicit unattended authorization is required to launch it.

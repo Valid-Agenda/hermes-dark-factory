@@ -22,7 +22,7 @@ import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, cast
 
 SCHEMA_VERSION = 2
 _PROCESS_KEY_ATTR = "_hermes_dark_factory_process_key"
@@ -101,6 +101,7 @@ SLICE_FIELDS = frozenset({
     "requires_decisions", "depends_on", "paths", "acceptance", "evidence",
     "review_required", "review_roles",
 })
+SLICE_ALLOWED_FIELDS = SLICE_FIELDS | {"story_ids"}
 DECISION_FIELDS = frozenset({"id", "statement", "status"})
 TESTING_FIELDS = frozenset({
     "focused_commands", "integration_commands", "browser_scenarios",
@@ -138,12 +139,14 @@ POLICY_FIELDS = frozenset({
     "max_remediation_cycles",
 })
 INTEGRATOR_AUTHORITY_FIELDS = frozenset({"session_id", "provider", "model"})
-BUILDER_SLICE_ACTIONS = frozenset({"start_slice", "record_failure", "request_review"})
+BUILDER_SLICE_ACTIONS = frozenset(
+    {"start_slice", "resume_slice", "continue_slice", "record_failure", "request_review"}
+)
 INTEGRATOR_SLICE_ACTIONS = frozenset(
     {"request_changes", "pass_review", "complete_slice", "block", "replan"}
 )
 MILESTONE_ACTIONS = frozenset(
-    {"start_milestone", "validate_milestone", "complete_milestone", "block", "replan"}
+    {"start_milestone", "resume_milestone", "validate_milestone", "complete_milestone", "block", "replan"}
 )
 STATE_FIELDS = frozenset({
     "schema_version", "mission_id", "manifest_digest", "created_at", "updated_at",
@@ -279,7 +282,7 @@ MILESTONE_STATES = {
 TERMINAL_SLICE_STATES = {"completed", "blocked", "replan_required"}
 CARD_SECTIONS = (
     ("Factory-Milestone", ("Factory-Milestone",)),
-    ("Factory-Slice", ("Factory-Slice",)),
+    ("Factory-Slice", ("Factory-Slice", "Factory-Functional-Block", "Functional-Block")),
     ("Outcome", ("Outcome",)),
     ("Boundaries", ("Boundaries",)),
     ("Acceptance", ("Acceptance",)),
@@ -529,6 +532,38 @@ def _acceptance_id_list(entity: dict[str, Any]) -> list[str]:
         str(item.get("id", "")).strip() if isinstance(item, dict) else str(item).strip()
         for item in rows
     ]
+
+
+def _slice_story_ids(slice_spec: dict[str, Any]) -> list[str]:
+    """Return the stories owned by a functional block.
+
+    ``story_id`` remains required for schema-v2 compatibility.  New manifests
+    may add ``story_ids`` when one substantial functional block spans several
+    stories; the singular field is retained as the first/primary story.
+    """
+
+    raw = slice_spec.get("story_ids")
+    if isinstance(raw, list) and raw:
+        return [str(value).strip() for value in raw]
+    primary = str(slice_spec.get("story_id") or "").strip()
+    return [primary] if primary else []
+
+
+def _milestone_requires_delivery_reviews(
+    manifest: dict[str, Any], milestone_spec: dict[str, Any]
+) -> bool:
+    """Return whether independent review is deferred to milestone delivery.
+
+    New functional-block manifests set ``review_required`` false on their
+    blocks.  Legacy manifests that explicitly review every slice keep their
+    historical state contract; mixed manifests use the safer milestone gate.
+    """
+
+    slices = _entity_map(manifest, "slices")
+    return any(
+        not bool(slices.get(str(slice_id), {}).get("review_required"))
+        for slice_id in milestone_spec.get("slices", [])
+    )
 
 
 def _word_count(value: Any) -> int:
@@ -843,7 +878,7 @@ def _validate_manifest_structure(manifest: dict[str, Any], errors: list[str]) ->
     if isinstance(slices, list):
         for index, slice_spec in enumerate(slices):
             path = f"slices[{index}]"
-            _check_exact_fields(slice_spec, path, SLICE_FIELDS, errors)
+            _check_exact_fields(slice_spec, path, SLICE_FIELDS, errors, allowed=SLICE_ALLOWED_FIELDS)
             if not isinstance(slice_spec, dict):
                 continue
             for field in (
@@ -1253,18 +1288,28 @@ def validate_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
         sid = str(item.get("id", "")).strip() or "<unknown>"
         mid = str(item.get("milestone_id", "")).strip()
         story_id = str(item.get("story_id", "")).strip()
+        owned_story_ids = _slice_story_ids(item)
         slice_to_milestone[sid] = mid
         if mid not in milestone_set:
             errors.append(f"{sid}: unknown milestone_id {mid!r}")
-        if story_id not in story_set:
-            errors.append(f"{sid}: story_id must reference mission.user_stories")
-        elif story_id not in milestone_story_ids.get(mid, set()):
-            errors.append(f"{sid}: story_id must be owned by milestone {mid or '<unknown>'}")
+        if not owned_story_ids or any(not value for value in owned_story_ids) or len(set(owned_story_ids)) != len(owned_story_ids):
+            errors.append(f"{sid}: story_ids must be non-empty and unique")
+        unknown_stories = sorted(set(owned_story_ids) - story_set)
+        if unknown_stories:
+            errors.append(f"{sid}: story_ids must reference mission.user_stories")
+        unowned_stories = sorted(set(owned_story_ids) - milestone_story_ids.get(mid, set()))
+        if unowned_stories:
+            errors.append(
+                f"{sid}: story_id must be owned by milestone {mid or '<unknown>'}; "
+                f"story_ids must be owned by that milestone"
+            )
+        if story_id not in owned_story_ids:
+            errors.append(f"{sid}: story_id must be the primary story in story_ids")
         outcome = str(item.get("outcome", "")).strip()
         if len(outcome.split()) < 5:
             errors.append(f"{sid}: outcome must be a coherent observable result, not an edit")
         if MICRO_TITLE.search(outcome):
-            errors.append(f"{sid}: outcome looks like a micro-remediation; keep it inside its parent slice")
+            errors.append(f"{sid}: outcome looks like a micro-remediation; keep it inside its parent functional block")
 
         risk = str(item.get("risk", "")).upper().strip()
         if risk not in RISK_RANK:
@@ -1276,13 +1321,18 @@ def validate_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
         )
         if _contains_high_risk_surface(surface_text) and RISK_RANK.get(risk, 0) < RISK_RANK["R3"]:
             errors.append(f"{sid}: declared {risk or 'no risk'} conflicts with a high-risk surface; use R3/R4")
-        if item.get("review_required") is not True:
-            errors.append(f"{sid}: every slice requires independent review by verifier and adversary")
+        review_required = item.get("review_required")
+        if not isinstance(review_required, bool):
+            errors.append(f"{sid}: review_required must be a boolean")
         review_roles = item.get("review_roles")
-        if not isinstance(review_roles, list) or not {"verifier", "adversary"}.issubset(set(map(str, review_roles))):
-            errors.append(f"{sid}: review_roles must include verifier and adversary")
+        if not isinstance(review_roles, list):
+            errors.append(f"{sid}: review_roles must be a list")
+        elif review_required and not {"verifier", "adversary"}.issubset(set(map(str, review_roles))):
+            errors.append(f"{sid}: reviewed blocks require verifier and adversary roles")
+        elif not review_required and review_roles:
+            errors.append(f"{sid}: milestone-reviewed blocks must not declare block review roles")
         if RISK_RANK.get(risk, 0) >= RISK_RANK["R3"] and not item.get("risk_triggers"):
-            errors.append(f"{sid}: R3/R4 slices must name risk_triggers")
+            errors.append(f"{sid}: R3/R4 functional blocks must name risk_triggers")
 
         required_decisions = item.get("requires_decisions", [])
         if not isinstance(required_decisions, list):
@@ -1293,10 +1343,14 @@ def validate_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
                 errors.append(f"{sid}: unknown decisions: {', '.join(unknown_decisions)}")
 
         slice_acceptance = _acceptance_rows(item, sid, errors)
-        linked_acceptance = story_acceptance.get(story_id, [])
+        linked_acceptance = [
+            criterion
+            for owned_story_id in owned_story_ids
+            for criterion in story_acceptance.get(owned_story_id, [])
+        ]
         if linked_acceptance and slice_acceptance != linked_acceptance:
             errors.append(
-                f"{sid}: acceptance must be the full exact ordered criterion contract of story {story_id}"
+                f"{sid}: acceptance must be the full exact ordered criterion contract of its owned stories"
             )
         evidence = item.get("evidence")
         if not isinstance(evidence, list) or not evidence:
@@ -1353,7 +1407,7 @@ def validate_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
             "max_active_milestones": (1, 1),
             "max_parallel_slices": (1, 2),
             "repeated_failure_limit": (1, 2),
-            "max_remediation_cycles": (1, 1),
+            "max_remediation_cycles": (1, 3),
         }
         for key, (minimum, maximum) in policy_bounds.items():
             value = policy.get(key)
@@ -1630,7 +1684,7 @@ def _authorize_milestone_actor(
     if bound is None:
         if action != "start_milestone":
             raise FactoryError(TRANSITION_AUTHORIZATION_ERROR)
-    elif actor != bound:
+    elif action != "resume_milestone" and actor != bound:
         raise FactoryError(TRANSITION_AUTHORIZATION_ERROR)
     return actor
 
@@ -1647,6 +1701,10 @@ def _authorize_slice_actor(
             manifest, trusted_actor, "builder", "trusted slice actor"
         )
         bound = current.get("builder_authority")
+        if action in {"continue_slice", "resume_slice"}:
+            if bound is None:
+                raise FactoryError(TRANSITION_AUTHORIZATION_ERROR)
+            return "builder", actor
         if bound is None:
             if action != "start_slice":
                 raise FactoryError(TRANSITION_AUTHORIZATION_ERROR)
@@ -1757,7 +1815,10 @@ def _validate_state_compatibility(manifest: dict[str, Any], state: dict[str, Any
             if current["status"] == "completed"
             else MILESTONE_STATE_FIELDS
         )
-        if set(current) != expected_fields:
+        allowed_fields = expected_fields | (
+            {"independent_reviews"} if current["status"] == "completed" else set()
+        )
+        if set(current) != expected_fields and set(current) != allowed_fields:
             raise FactoryError(f"state milestone {mid} has unexpected or omitted fields")
         if not isinstance(current.get("acceptance_passed"), list) or not isinstance(current.get("scenario_receipts"), list):
             raise FactoryError(f"state milestone {mid} has invalid evidence fields")
@@ -1778,6 +1839,20 @@ def _validate_state_compatibility(manifest: dict[str, Any], state: dict[str, Any
             if current["scenario_receipts"] != scenario_receipts:
                 raise FactoryError(f"completed milestone {mid} scenario receipts are not normalized")
             _validate_holdout_review(manifest, current["holdout_review"], integration_sha, mid)
+            requires_delivery_reviews = _milestone_requires_delivery_reviews(
+                manifest, milestone_specs[mid]
+            )
+            if requires_delivery_reviews and not current.get("independent_reviews"):
+                raise FactoryError(f"completed milestone {mid} lacks independent delivery reviews")
+            if current.get("independent_reviews"):
+                independent_reviews = _validate_milestone_reviews(
+                    manifest,
+                    mid,
+                    current["independent_reviews"],
+                    integration_sha,
+                )
+                if current["independent_reviews"] != independent_reviews:
+                    raise FactoryError(f"completed milestone {mid} independent reviews are not normalized")
             if any(state["slices"][sid].get("status") != "completed" for sid in milestone_specs[mid].get("slices", [])):
                 raise FactoryError(f"completed milestone {mid} has incomplete slices")
     for sid, current in state["slices"].items():
@@ -1820,7 +1895,10 @@ def _validate_state_compatibility(manifest: dict[str, Any], state: dict[str, Any
             )
             if current["checks"] != normalised_checks:
                 raise FactoryError(f"state slice {sid} check receipts are not normalized")
-        if current["status"] in {"review_passed", "completed"}:
+        block_review_required = bool(slice_specs[sid].get("review_required"))
+        if current["status"] == "review_passed" or (
+            current["status"] == "completed" and block_review_required
+        ):
             review = current.get("review")
             if not isinstance(review, dict) or review.get("verdict") != "pass" or not review.get("reviews"):
                 raise FactoryError(f"state slice {sid} lacks passed independent review evidence")
@@ -1832,6 +1910,10 @@ def _validate_state_compatibility(manifest: dict[str, Any], state: dict[str, Any
             if not current.get("candidate_sha") or not current.get("checks"):
                 raise FactoryError(f"completed slice {sid} lacks candidate/check evidence")
 
+    historical_integrator_authority: dict[str, str] | None = None
+    historical_builder_authority: dict[str, dict[str, str] | None] = {
+        sid: None for sid in expected_slices
+    }
     for index, event in enumerate(state["events"]):
         label = f"state event {index}"
         if not isinstance(event, dict) or set(event) != STATE_EVENT_FIELDS:
@@ -1851,20 +1933,59 @@ def _validate_state_compatibility(manifest: dict[str, Any], state: dict[str, Any
         elif entity_id in expected_slices:
             expected_role = "builder" if action in BUILDER_SLICE_ACTIONS else "integrator"
             allowed_actions = BUILDER_SLICE_ACTIONS | INTEGRATOR_SLICE_ACTIONS
-            expected_actor = (
-                state["slices"][entity_id]["builder_authority"]
-                if expected_role == "builder"
-                else state["integrator_authority"]
-            )
+            expected_actor = state["integrator_authority"]
         else:
             raise FactoryError(f"{label} entity_id does not match manifest")
         if action not in allowed_actions:
             raise FactoryError(f"{label} action is not valid for its entity")
         if actor.get("role") != expected_role:
             raise FactoryError(f"{label} actor role does not match action authority")
-        event_authority = {key: actor.get(key) for key in INTEGRATOR_AUTHORITY_FIELDS}
-        if expected_actor is None or event_authority != expected_actor:
-            raise FactoryError(f"{label} actor does not match bound state authority")
+        event_authority = cast(
+            dict[str, str],
+            {key: actor.get(key) for key in INTEGRATOR_AUTHORITY_FIELDS},
+        )
+        if expected_role == "builder":
+            canonical_builder = _validated_role_authority(
+                manifest, event_authority, "builder", f"{label}.actor"
+            )
+            if event_authority != canonical_builder:
+                raise FactoryError(f"{label} actor does not match configured builder authority")
+            previous_builder = historical_builder_authority[entity_id]
+            if action == "start_slice":
+                if previous_builder is not None:
+                    raise FactoryError(f"{label} repeats slice start for {entity_id}")
+                historical_builder_authority[entity_id] = event_authority
+            elif action in {"continue_slice", "resume_slice"}:
+                if previous_builder is None:
+                    raise FactoryError(f"{label} continues {entity_id} before slice start")
+                historical_builder_authority[entity_id] = event_authority
+            elif previous_builder is None or event_authority != previous_builder:
+                raise FactoryError(f"{label} actor does not match bound state authority")
+        else:
+            canonical_integrator = _validated_integrator_authority(
+                manifest, event_authority, f"{label}.actor"
+            )
+            if canonical_integrator != event_authority:
+                raise FactoryError(f"{label} actor does not match configured integrator authority")
+            if entity_id in expected_milestones and action == "start_milestone":
+                if historical_integrator_authority is not None:
+                    raise FactoryError(f"{label} repeats milestone start for {entity_id}")
+                historical_integrator_authority = event_authority
+            elif entity_id in expected_milestones and action == "resume_milestone":
+                if historical_integrator_authority is None:
+                    raise FactoryError(f"{label} resumes {entity_id} before milestone start")
+                historical_integrator_authority = event_authority
+            elif historical_integrator_authority is None or event_authority != historical_integrator_authority:
+                raise FactoryError(f"{label} actor does not match bound state authority")
+
+    if state["integrator_authority"] is not None and historical_integrator_authority != state["integrator_authority"]:
+        raise FactoryError("state integrator authority history does not match current authority")
+    for sid, historical in historical_builder_authority.items():
+        current_builder = state["slices"][sid]["builder_authority"]
+        if historical != current_builder:
+            raise FactoryError(
+                f"state slice {sid} builder authority history does not match current authority"
+            )
 
 
 def load_or_create_state(
@@ -1922,23 +2043,34 @@ def _paths_overlap(
     return any(could_intersect(a, b) for a in left for b in right)
 
 
-def _dispatch_descriptor(manifest: dict[str, Any], entity_id: str, entity_type: str) -> dict[str, Any]:
+def _dispatch_descriptor(
+    manifest: dict[str, Any],
+    entity_id: str,
+    entity_type: str,
+    *,
+    action: str | None = None,
+) -> dict[str, Any]:
     is_milestone = entity_type == "milestone"
     configured_role = "integrator" if is_milestone else "builder"
     execution_role = "orchestrator" if is_milestone else "worker"
+    resolved_action = action or ("start_milestone" if is_milestone else "start_slice")
     model_ref = manifest.get("models", {}).get(configured_role, {})
     execution = manifest.get("execution") if isinstance(manifest.get("execution"), dict) else {}
     reasoning = execution.get("reasoning_effort") if isinstance(execution.get("reasoning_effort"), dict) else {}
     return {
         "entity_id": entity_id,
         "entity_type": entity_type,
-        "action": "start_milestone" if is_milestone else "start_slice",
+        "action": resolved_action,
         "configured_role": configured_role,
         "execution_role": execution_role,
         "provider": str(model_ref.get("provider", "")),
         "model": str(model_ref.get("model", "")),
         "reasoning_effort": str(reasoning.get(execution_role) or ("high" if is_milestone else "medium")),
-        "execution_mode": "orchestration" if is_milestone else "functional_slice",
+        "execution_mode": (
+            "remediation"
+            if resolved_action == "continue_slice"
+            else "orchestration" if is_milestone else "functional_block"
+        ),
         "auto_launch": False,
     }
 
@@ -2015,6 +2147,16 @@ def next_actions(manifest: dict[str, Any], state: dict[str, Any]) -> dict[str, A
         if all(state["slices"][sid]["status"] == "completed" for sid in spec.get("slices", [])):
             gates.append(f"validate_milestone:{mid}")
 
+    resume_milestones = [
+        mid
+        for mid, value in state["milestones"].items()
+        if value["status"] in {"active", "validating"}
+        and (
+            f"validate_milestone:{mid}" in gates
+            or value["status"] == "validating"
+        )
+    ]
+
     replan = [
         f"slice:{sid}"
         for sid, value in state["slices"].items()
@@ -2024,6 +2166,31 @@ def next_actions(manifest: dict[str, Any], state: dict[str, Any]) -> dict[str, A
         for mid, value in state["milestones"].items()
         if value["status"] == "replan_required"
     ]
+    continuation_slices = [
+        sid
+        for sid, value in state["slices"].items()
+        if (
+            value["status"] == "active"
+            and value.get("candidate_sha")
+            and value.get("candidate_sha") == value.get("last_rejected_sha")
+            and value.get("remediation_cycles", 0)
+            <= _policy(manifest, "max_remediation_cycles")
+            and value.get("attempt", 0)
+            < _policy(manifest, "max_remediation_cycles") + 1
+        )
+    ]
+    resume_slices = [
+        sid
+        for sid, value in state["slices"].items()
+        if (
+            value["status"] == "active"
+            and value.get("attempt", 0) >= 1
+            and (
+                not value.get("candidate_sha")
+                or value.get("candidate_sha") != value.get("last_rejected_sha")
+            )
+        )
+    ]
 
     return {
         "active_milestones": active_milestones,
@@ -2031,13 +2198,30 @@ def next_actions(manifest: dict[str, Any], state: dict[str, Any]) -> dict[str, A
         "startable_milestones": startable_milestones,
         "startable_slices": startable_slices,
         "gates": gates,
+        "resume_milestones": resume_milestones,
         "replan_required": replan,
+        "continuation_slices": continuation_slices,
+        "resume_slices": resume_slices,
         "dispatch": {
             "startable_milestones": [
                 _dispatch_descriptor(manifest, mid, "milestone") for mid in startable_milestones
             ],
             "startable_slices": [
                 _dispatch_descriptor(manifest, sid, "slice") for sid in startable_slices
+            ],
+            "continuation_slices": [
+                _dispatch_descriptor(
+                    manifest, sid, "slice", action="continue_slice"
+                )
+                for sid in continuation_slices
+            ],
+            "resume_slices": [
+                _dispatch_descriptor(manifest, sid, "slice", action="resume_slice")
+                for sid in resume_slices
+            ],
+            "resume_milestones": [
+                _dispatch_descriptor(manifest, mid, "milestone", action="resume_milestone")
+                for mid in resume_milestones
             ],
         },
     }
@@ -2652,6 +2836,61 @@ def _validate_reviews(
     return normalised
 
 
+def _validate_milestone_reviews(
+    manifest: dict[str, Any], milestone_id: str, reviews: Any, integration_sha: str
+) -> list[dict[str, str]]:
+    """Validate verifier/adversary receipts at a functional-block milestone gate."""
+
+    if not isinstance(reviews, list) or not reviews:
+        raise FactoryError("independent_reviews must be a non-empty list")
+    required_roles = {"verifier", "adversary"}
+    models = manifest.get("models", {})
+    normalised: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for index, review in enumerate(reviews, start=1):
+        if not isinstance(review, dict):
+            raise FactoryError(f"milestone review {index} must be an object")
+        _verify_review_receipt(manifest, review)
+        if str(review.get("entity_id", "")) != milestone_id:
+            raise FactoryError(f"milestone review {index} entity_id does not match milestone")
+        if str(review.get("candidate_sha", "")) != str(integration_sha):
+            raise FactoryError(f"milestone review {index} candidate_sha does not match integration_sha")
+        role = str(review.get("role", "")).strip()
+        reviewer = str(review.get("reviewer", "")).strip()
+        provider = str(review.get("provider", "")).strip()
+        model = str(review.get("model", "")).strip()
+        verdict = str(review.get("verdict", "")).strip().upper()
+        if role not in required_roles:
+            raise FactoryError(f"milestone review {index} has unexpected role {role!r}")
+        expected = models.get(role, {}) if isinstance(models, dict) else {}
+        if provider != str(expected.get("provider", "")).strip() or model != str(expected.get("model", "")).strip():
+            raise FactoryError(f"milestone review {role} did not use its configured provider/model")
+        if not reviewer:
+            raise FactoryError(f"milestone review {role} requires reviewer identity")
+        if verdict != "PASS":
+            raise FactoryError(f"milestone review {role} verdict must be PASS")
+        if role in seen:
+            raise FactoryError(f"duplicate milestone review role: {role}")
+        seen.add(role)
+        normalised.append({
+            "mission_id": str(review.get("mission_id", "")),
+            "manifest_digest": str(review.get("manifest_digest", "")),
+            "entity_id": str(review.get("entity_id", "")),
+            "role": role,
+            "reviewer": reviewer,
+            "provider": provider,
+            "model": model,
+            "verdict": verdict,
+            "candidate_sha": str(review.get("candidate_sha", "")),
+            "session_id": str(review.get("session_id", "")),
+            "attestation": str(review.get("attestation", "")),
+        })
+    missing = sorted(required_roles - seen)
+    if missing:
+        raise FactoryError("missing required milestone review roles: " + ", ".join(missing))
+    return normalised
+
+
 def _validate_holdout_review(
     manifest: dict[str, Any], review: Any, integration_sha: str, entity_id: str = ""
 ) -> dict[str, str]:
@@ -2754,6 +2993,38 @@ def transition(
             current["status"] = "active"
             current["attempt"] += 1
 
+        elif action == "resume_slice":
+            if status != "active":
+                raise FactoryError(f"cannot resume {entity_id} while {entity_id} is {status}")
+            _require_keys(evidence, ("reason",), action)
+            if current.get("candidate_sha") == current.get("last_rejected_sha") and current.get("candidate_sha"):
+                raise FactoryError("resume_slice cannot replace a rejected candidate; use continue_slice first")
+            if int(current.get("attempt", 0)) < 1:
+                raise FactoryError("cannot resume a slice before its initial start")
+            # A worker process/session is disposable. Rebinding it must not
+            # consume the semantic remediation budget or increment attempt.
+            current["builder_authority"] = transition_actor
+
+        elif action == "continue_slice":
+            if status != "active":
+                raise FactoryError(f"cannot continue {entity_id} while {entity_id} is {status}")
+            _require_keys(evidence, ("reason",), action)
+            candidate_sha = str(current.get("candidate_sha") or "")
+            rejected_sha = str(current.get("last_rejected_sha") or "")
+            remediation_limit = _policy(manifest, "max_remediation_cycles")
+            if (
+                not candidate_sha
+                or candidate_sha != rejected_sha
+                or current["remediation_cycles"] > remediation_limit
+                or current["attempt"] >= remediation_limit + 1
+            ):
+                raise FactoryError("no bounded continuation remains; replan is required")
+            current["builder_authority"] = transition_actor
+            current["attempt"] += 1
+            current["candidate_sha"] = None
+            current["checks"] = []
+            current["acceptance_passed"] = []
+
         elif action == "record_failure":
             if status not in {"active", "review", "review_passed"}:
                 raise FactoryError(f"cannot record failure while {entity_id} is {status}")
@@ -2772,6 +3043,8 @@ def transition(
         elif action == "request_review":
             if status != "active":
                 raise FactoryError(f"cannot request review while {entity_id} is {status}")
+            if not bool(spec.get("review_required")):
+                raise FactoryError("block review is deferred to the milestone delivery gate")
             _require_keys(evidence, ("candidate_sha", "checks"), action)
             candidate_sha = _require_git_commit(manifest, evidence["candidate_sha"], "candidate_sha")
             evidence["candidate_sha"] = candidate_sha
@@ -2793,11 +3066,17 @@ def transition(
         elif action == "request_changes":
             if status != "review":
                 raise FactoryError(f"cannot request changes while {entity_id} is {status}")
+            if not bool(spec.get("review_required")):
+                raise FactoryError("block review is deferred to the milestone delivery gate")
             _require_keys(evidence, ("findings",), action)
             current["remediation_cycles"] += 1
             current["last_rejected_sha"] = current.get("candidate_sha")
             current["review"] = {"verdict": "changes", "findings": evidence["findings"]}
-            if current["remediation_cycles"] > _policy(manifest, "max_remediation_cycles"):
+            remediation_limit = _policy(manifest, "max_remediation_cycles")
+            if (
+                current["remediation_cycles"] > remediation_limit
+                or current["attempt"] >= remediation_limit + 1
+            ):
                 current["status"] = "replan_required"
                 evidence["circuit_breaker"] = "remediation_budget"
             else:
@@ -2806,6 +3085,8 @@ def transition(
         elif action == "pass_review":
             if status != "review":
                 raise FactoryError(f"cannot pass review while {entity_id} is {status}")
+            if not bool(spec.get("review_required")):
+                raise FactoryError("block review is deferred to the milestone delivery gate")
             _require_keys(evidence, ("reviews", "candidate_sha"), action)
             reviewed_sha = _require_git_commit(manifest, evidence["candidate_sha"], "candidate_sha")
             evidence["candidate_sha"] = reviewed_sha
@@ -2881,6 +3162,15 @@ def transition(
                 state["integrator_authority"] = milestone_actor
             current["status"] = "active"
 
+        elif action == "resume_milestone":
+            if status not in {"active", "validating"}:
+                raise FactoryError(f"cannot resume {entity_id} from {status}")
+            _require_keys(evidence, ("reason",), action)
+            # The persistent integrator is a logical authority; its Hermes
+            # process/session is disposable and may be rebound after timeout,
+            # context exhaustion, or an ordinary process exit.
+            state["integrator_authority"] = milestone_actor
+
         elif action == "validate_milestone":
             if status != "active":
                 raise FactoryError(f"cannot validate {entity_id} from {status}")
@@ -2893,6 +3183,9 @@ def transition(
             if status != "validating":
                 raise FactoryError(f"cannot complete {entity_id} from {status}")
             _require_keys(evidence, ("acceptance_passed", "scenario_receipts", "integration_sha", "holdout_review"), action)
+            requires_delivery_reviews = _milestone_requires_delivery_reviews(manifest, spec)
+            if requires_delivery_reviews:
+                _require_keys(evidence, ("independent_reviews",), action)
             expected = _acceptance_ids(spec)
             passed = set(map(str, evidence["acceptance_passed"]))
             missing = sorted(expected - passed)
@@ -2916,10 +3209,20 @@ def transition(
                 manifest, evidence["holdout_review"], integration_sha, entity_id
             )
             evidence["holdout_review"] = holdout_review
+            if requires_delivery_reviews:
+                independent_reviews = _validate_milestone_reviews(
+                    manifest,
+                    entity_id,
+                    evidence["independent_reviews"],
+                    integration_sha,
+                )
+                evidence["independent_reviews"] = independent_reviews
             current["acceptance_passed"] = sorted(passed)
             current["scenario_receipts"] = scenario_receipts
             current["integration_sha"] = integration_sha
             current["holdout_review"] = holdout_review
+            if requires_delivery_reviews:
+                current["independent_reviews"] = evidence["independent_reviews"]
             current["status"] = "completed"
 
         elif action == "block":
@@ -2997,11 +3300,11 @@ def lint_card(title: str, body: str) -> dict[str, Any]:
     ]
     warnings: list[str] = []
     if MICRO_TITLE.search(title.strip()):
-        errors.append("title looks like a micro-remediation; keep it inside the active functional slice")
+        errors.append("title looks like a micro-remediation; keep it inside the active functional block")
     outcome = " ".join(content["Outcome"]).strip(" -*\t")
     if MICRO_TITLE.search(outcome):
         errors.append(
-            "Outcome content looks like a micro-remediation; require a durable functional result"
+            "Outcome content looks like a micro-remediation; require a durable functional-block result"
         )
     if content["Boundaries"] and not _card_section_has_coordinate(
         content["Boundaries"]

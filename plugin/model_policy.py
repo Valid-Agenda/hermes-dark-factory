@@ -85,7 +85,7 @@ def preset_catalog(model_catalog: Any = None) -> dict[str, Any]:
                 "id": DEFAULT_PRESET_ID,
                 "label": "Integrator orchestrator + builder worker",
                 "description": (
-                    "Integrator orchestrates milestones; builder executes functional slices. "
+                    "Integrator orchestrates milestones; builder executes complete functional blocks. "
                     "Verifier, adversary, and holdout remain independently selected."
                 ),
                 "roles": roles,

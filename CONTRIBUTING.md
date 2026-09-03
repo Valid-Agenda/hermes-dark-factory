@@ -37,12 +37,12 @@ A successful test run must discover a nonzero number of tests and finish with `O
 
 ## Change guidelines
 
-- Keep each change within a coherent milestone slice; do not turn individual edits or reviewer comments into durable work items.
+- Keep each change within a complete, coherent functional block (the manifest's compatibility `slice` field); thin top-to-bottom slices, individual edits, and reviewer comments stay inside that block rather than becoming durable work items.
 - Preserve the canonical manifest schemas. Reject unknown fields at boundaries rather than silently projecting legacy/backend-only fields.
 - Keep model references as `{provider, model}` only. Never persist credentials, API keys, OAuth tokens, connection strings, or secret-shaped values.
 - Treat the active profile's authenticated model inventory as authoritative. Do not add silent fallback or truthy-but-unauthenticated model selection.
 - Keep verifier, adversary, and holdout roles independent from the builder. The Kryptonite/adversarial lens must remain enabled.
-- Keep reviewer-role write restrictions and the one-remediation circuit breaker intact.
+- Keep reviewer-role write restrictions, fresh-session block resumption, and repeated-identical-failure circuit breakers intact.
 - For stateful changes, add subprocess or persistence coverage for missing, corrupt, mismatched, replayed, and progressed state.
 - For dashboard or desktop changes, exercise the real browser-visible interaction and check the browser console; syntax/build success alone is not sufficient.
 - Run `python3 scripts/public_release_scan.py` before submitting. It reports only pattern classes and fails on non-test matches.

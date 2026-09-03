@@ -1,7 +1,7 @@
 ---
 name: dark-factory
-version: 0.4.0
-description: Use when turning a product specification or imported manifest into bounded Beads-backed software delivery across milestones. Guide the user through strict preflight, authenticated role models, independent test/security gates, one integrator, and coherent functional slices from chat or the desktop workspace.
+version: 0.5.0
+description: Use when turning a product specification or imported manifest into bounded Beads-backed software delivery across milestones. Guide the user through strict preflight, authenticated role models, independent test/security gates, one integrator, and bounded autonomous continuation of coherent functional blocks.
 author: Hermes Agent
 license: MIT
 metadata:
@@ -17,7 +17,7 @@ A dark factory is not “put every coding step on a board and keep retrying unti
 
 The controlled variable is **milestone capability accepted**. Cards closed, tests run, commits made, reviewer messages, and tokens consumed are observations or evidence. They are not progress unless they move a milestone acceptance criterion from unproven to proven.
 
-This skill is deliberately opinionated because autonomous delivery fails softly: the board stays busy while the product stands still. Its default shape is one persistent frontier-model integrator, at most two bounded workers on truly disjoint slices, deterministic evidence, one proportionate independent review, and a circuit breaker that replans rather than spawning another tiny card.
+This skill is deliberately opinionated because autonomous delivery fails softly: the board stays busy while the product stands still. Its default shape is one persistent frontier-model integrator, at most two bounded workers on truly disjoint functional blocks, deterministic evidence, one proportionate independent milestone review, bounded continuation after a local rejection, and a circuit breaker that replans rather than spawning another tiny card.
 
 ## When to use
 
@@ -48,10 +48,10 @@ Do not use a routing-only orchestrator that is forbidden from understanding or t
 
 1. **Mission** — the bounded product result.
 2. **Milestone** — a meaningful runnable checkpoint that proves part of the mission.
-3. **Functional slice** — an independently reviewable outcome with one risk boundary.
-4. **Micro-step** — an edit, failing test, reviewer comment, lint fix, or debugging action inside a slice.
+3. **Functional block** — a substantial product area delivered with its required adjacent wiring, observable acceptance, and evidence. The manifest's compatibility field is still named `slice`/`slices`.
+4. **Thin slice / micro-step** — a scaffold seam, edit, failing test, reviewer comment, lint fix, or debugging action inside a functional block.
 
-Mission, milestone, and functional slice may be durable records. Micro-steps belong in the active session’s todo/checklist and Git diff. Never create a Beads item for each micro-step.
+Mission, milestone, and functional block may be durable records. Thin slices and micro-steps belong in the active block session’s todo/checklist and Git diff. Never create a Beads item for each scaffold, edit, or wiring step.
 
 ### 3. Milestones set validation frequency
 
@@ -68,7 +68,7 @@ A milestone is not “backend complete” or “tests added.” It is something 
 Defaults:
 
 - Active milestones: **1**.
-- Active functional slices: **2 maximum**.
+- Active functional blocks: **2 maximum**.
 - Parallel workers: **2 maximum**, only for disjoint files/interfaces.
 - Shared schema, migrations, public contracts, authorisation, cross-cutting state, and integration: serial under the integrator.
 - Independent reviewer per gate: **1**, unless a declared high-risk surface requires distinct security/privacy/safeguarding review.
@@ -101,11 +101,18 @@ project ledger.
 
 The slash invocation is skill-driven, so it keeps the normal Hermes model,
 session, tool, and human-approval context. It is not a bypass shell command.
-`execute` means inspect `factory_next`, work one startable slice at a time,
-run the declared evidence, obtain independent review, and use the guarded
-transition/apply tools. Never interpret it as permission to publish, deploy,
+`execute` means inspect `factory_next`, work one startable functional block at a time,
+run the declared evidence, and hand the integrated milestone to the independent
+review/transition tools. Never interpret it as permission to publish, deploy,
 spend, contact third parties, or apply a Beads graph without the applicable
 human/integrator gate.
+
+For a genuine set-and-forget run, the integrator must apply the Beads graph
+and then call `factory_start` with explicit `allow_unattended: true` and the
+active Hermes profile. That tool launches one detached supervisor for the
+mission. The supervisor owns process health and Beads leases; workers own
+implementation and guarded factory transitions. Do not emulate durability by
+keeping one chat turn open.
 
 For a manifest import, call `factory_import_manifest` with either
 `manifest_path` or an inline `manifest` object. The import must be schema-v2,
@@ -120,7 +127,7 @@ Use the Dark Factory plugin page or `factory_preflight` before authoring work. T
 
 The default `sol-luna` policy fills blank execution roles only when the exact authenticated models are available: Sol 900k for the orchestrator/integrator and Luna for the worker/builder. It never overwrites explicit selections and never infers verifier, adversary, or holdout models.
 
-Beads is mandatory and is the only graph backend. Use `factory_beads_plan` to inspect the mission → milestone epic → functional-slice task graph, then let the integrator call `factory_beads_apply` only when graph mode is `apply` and the explicit authorization/readiness gates pass. Parent links are organizational; real ordering uses dependent→prerequisite `blocks` edges. Beads owns durable graph/status/assignment; the Dark Factory ledger owns acceptance/evidence/review/WIP. Never create micro-beads for debugging, test fixes, remediation, or review comments.
+Beads is mandatory and is the only graph backend. Use `factory_beads_plan` to inspect the mission → milestone epic → functional-block task graph, then let the integrator call `factory_beads_apply` only when graph mode is `apply` and the explicit authorization/readiness gates pass. Parent links are organizational; real ordering uses dependent→prerequisite `blocks` edges. Beads owns durable graph/status/assignment and the detached supervisor uses its claims as the live queue; the Dark Factory ledger owns acceptance/evidence/review/WIP. Never create micro-beads for thin slices, debugging, test fixes, remediation, or review comments.
 
 Preflight is fail-closed. It must have:
 
@@ -140,9 +147,9 @@ The mission compiler rejects:
 
 - Vague outcomes.
 - Milestones with no observable acceptance criteria.
-- Slices with no deterministic evidence command/scenario.
+- Functional blocks with no deterministic evidence command/scenario.
 - Unknown or circular dependencies.
-- A slice assigned to the wrong milestone.
+- A functional block assigned to the wrong milestone.
 - Risk-sensitive work whose prerequisite policy/ownership decision is unresolved.
 - Parallel slices with overlapping declared paths or shared contract authority.
 
@@ -160,39 +167,39 @@ If those decisions are not ready, the factory is not ready.
 
 ## The three nested loops
 
-### Loop A — inner implementation loop
+### Loop A — inner functional-block implementation loop
 
-Scope: one active functional slice.
+Scope: one active functional block. Thin top-to-bottom slices and semantic edits are implementation details inside this block, not durable work items.
 
-1. Read the slice outcome, exact boundaries, acceptance criteria, and evidence commands.
+1. Read the block outcome, required adjacent interfaces/wiring, exact boundaries, acceptance criteria, and evidence commands.
 2. Make the next coherent implementation change.
 3. Run the nearest focused deterministic check.
-4. Diagnose and fix within the same session and slice.
+4. Diagnose and fix within the same session and block.
 5. Update the session todo; do not create a board card.
-6. Continue until the slice candidate is coherent.
+6. Continue until the complete functional-block candidate is coherent and wired.
 
-Do not run the entire suite after every edit. Do not spawn a reviewer for every patch. Do not interpret one focused green test as slice completion.
+Do not run the entire suite after every edit. Do not spawn a reviewer for every patch. Do not interpret one focused green test or a scaffold seam as functional-block completion.
 
-### Loop B — slice acceptance loop
+### Loop B — functional-block convergence loop
 
-1. Freeze a candidate SHA/diff.
-2. Run all slice evidence once against that candidate.
-3. If review is risk-justified, send the exact candidate and acceptance contract to one independent reviewer.
-4. Deduplicate findings and apply one batched remediation pass.
-5. Re-run only checks/reviews invalidated by the changed surface.
-6. Complete the slice only when every declared criterion is proven.
+1. Freeze a candidate SHA/diff for the complete functional block.
+2. Run all block evidence once against that candidate.
+3. For a milestone-reviewed block, complete it through the integrator; do not spawn a reviewer for this block.
+4. If the milestone gate identifies a local defect, call `factory_next`. If `continuation_slices` contains the block, dispatch its `continue_slice` descriptor and produce a genuinely new candidate.
+5. Re-run only checks invalidated by the changed surface, then repeat while a bounded continuation remains.
+6. Complete the block only when every owned criterion and required wiring path is proven.
 
-Maximum automatic remediation cycles: **1**. A second materially similar failure means the slice or plan is wrong; return to the integrator for replanning.
+The default allows **three bounded remediation cycles** (the manifest may choose 1–3). A repeated normalised failure, unchanged candidate, contradictory evidence, unavailable capability, or exhausted budget sets `replan_required`. Do not produce a final “stopped” summary while `continuation_slices` is non-empty.
 
 ### Loop C — milestone convergence loop
 
-1. Integrate all completed slices serially.
+1. Integrate all completed functional blocks serially.
 2. Run milestone-level full/integration checks.
 3. Exercise realistic user/system scenarios, including negative and recovery cases.
 4. Compare observed behaviour with milestone acceptance, not the implementation plan.
 5. If evidence passes, record the integration SHA and receipts and complete the milestone.
 6. If it fails, classify the failure:
-   - local implementation defect → one bounded remediation slice;
+   - local implementation defect → bounded continuation through the returned functional-block descriptor;
    - shared contract/design defect → replan the milestone;
    - prerequisite/harness/capability defect → typed blocker with owner and resume condition;
    - product ambiguity → human decision gate.
@@ -205,7 +212,7 @@ Report progress as:
 
 - Mission: milestones accepted / total.
 - Current milestone: acceptance criteria proven / total.
-- Active slices: outcome, candidate SHA, evidence state.
+- Active functional blocks: outcome, candidate SHA, evidence state.
 - Blockers: typed cause, owner, resume condition.
 - Retry budget: used / allowed.
 - Risk and spend: current envelope versus limit.
@@ -218,19 +225,20 @@ Trigger `replan_required` when any occurs:
 
 - The same normalised failure appears twice.
 - One remediation plus re-review fails materially again.
-- A worker times out or returns partial work twice on the same slice.
+- A worker times out or returns partial work; the supervisor resumes it in a fresh session. Repeated identical launcher/environment failure is the escalation condition, not elapsed wall-clock time.
 - A test passes locally but the milestone scenario fails twice.
 - A reviewer reviews another reviewer rather than the candidate.
 - The board creates more work while the active milestone has no acceptance delta.
 - A prerequisite decision or harness defect is repeatedly rediscovered.
 - Scope/risk changes invalidate the task contract.
 
-Replanning means revisiting the slice boundary, dependency, interface, acceptance method, model/tool choice, or product decision. It does not mean rewriting the same card with stronger adjectives.
+Replanning means revisiting the functional-block boundary, dependency, interface, acceptance method, model/tool choice, or product decision. It does not mean rewriting the same card with stronger adjectives.
 
 ## Beads graph policy
 
 Beads is the required durable coordination backend. It is deliberately narrow:
-one mission graph contains the mission, milestones, and functional slices;
+one mission graph contains the mission, milestones, and functional blocks (the
+manifest compatibility key remains `slices`);
 ordering is expressed through dependency edges; and the graph is projected
 only after the Dark Factory manifest passes validation. Dark Factory's signed
 state ledger remains authoritative for acceptance, evidence, review, WIP,
@@ -313,19 +321,23 @@ Stop / escalate:
 
 Workers do not decide product scope, shared schema, public interfaces, publish authority, or whether acceptance is “close enough.” They return changed files, exact candidate SHA/diff, focused evidence, unresolved risks, and a terminal disposition.
 
-Do not poll, repeatedly steer, or respawn a worker. Inspect partial filesystem state and finish or replan from the integrator. A worker summary is not proof.
+Do not treat a worker summary as proof. The durable supervisor may poll the
+worker process, terminate only an over-time watchdog, and resume the same
+functional block in a fresh Hermes session. A session boundary is operational
+recovery, not a new remediation cycle or a new Beads card.
 
 ## Review policy
 
-Select review depth by changed surface and risk, while preserving the mandatory independent gate.
+Select review depth by changed surface and risk, while preserving the mandatory
+milestone delivery gate.
 
-- Every slice: deterministic focused checks plus a fresh verifier model that is not the builder.
+- Every functional block: deterministic focused checks and complete adjacent wiring; no routine reviewer loop is required when the block is configured for milestone-scoped review.
 - Every milestone: re-prove every owned story criterion plus milestone-local acceptance through full/integration checks and a held-out scenario judged by the configured non-builder holdout model against the exact integration SHA. Milestone state transitions belong only to the persistent integrator.
 - Review PASS records must come from `factory_attest_review`; the plugin binds each signed receipt to the active Hermes session ID, factory role, configured provider/model, mission, entity, and frozen SHA. Caller-authored review JSON is not accepted. Reviewer, verifier, adversary, and holdout roles are read-only whenever active; this isolation does not depend on optional strict mode.
 - Every mission: adversarial review under the Kryptonite-style lens; low-risk work may use a lightweight threat set, but the gate cannot be disabled.
 - Security/privacy/tenancy/migration/public-contract/cost/publish surface: expanded adversarial scenarios and preferably a different provider as well as a different model.
 - User-facing DOM/event flow: real browser action and post-state assertion.
-- Strict worker delegation requires an explicitly pinned, readable, compatible, attested state ledger; every delegated slice must be currently startable and exactly match the compiled milestone, slice, outcome, and ownership contract.
+- Strict worker delegation requires an explicitly pinned, readable, compatible, attested state ledger; every delegated functional block must be currently startable/resumable and exactly match the compiled milestone, block, outcome, adjacent-boundary, and ownership contract.
 
 Review the candidate SHA/diff against the acceptance contract. Return concrete defects with evidence and risk. Batch compatible fixes once. Re-review only the changed candidate and only the lenses invalidated by the changes.
 
@@ -383,7 +395,7 @@ Do not manufacture human gates for routine local dependencies, tests, commits, o
 - [ ] Shared contracts and risk decisions precede parallel work.
 - [ ] Focused tests run in the inner loop; full/scenario validation runs at the milestone gate.
 - [ ] Review is selected by risk and targets an exact candidate.
-- [ ] One remediation is allowed; repeat failure triggers replan.
+- [ ] Local review rejection continues through the bounded continuation descriptor; repeat failure or exhausted budget triggers replan.
 - [ ] Progress is acceptance delta, not activity count.
 - [ ] Completion has machine-readable evidence receipts.
 - [ ] Human gates cover only actual human authority.

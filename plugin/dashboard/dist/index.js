@@ -30,7 +30,7 @@
   var ACCEPTANCE_TYPES = ["happy", "negative", "recovery", "boundary", "abuse"];
   var ROLES = [
     { key: "integrator", label: "Orchestrator / Integrator", help: "Owns mission intent, shared contracts, integration, and milestone gates." },
-    { key: "builder", label: "Worker / Builder", help: "Implements one bounded functional slice and its focused checks." },
+    { key: "builder", label: "Worker / Builder", help: "Implements one complete functional block and its focused checks." },
     { key: "verifier", label: "Verifier", help: "Exercises acceptance evidence independently from implementation." },
     { key: "adversary", label: "Adversary", help: "Challenges security, failure, and boundary assumptions." },
     { key: "holdout", label: "Holdout", help: "Judges milestone evidence with a fresh context and external oracle." }
@@ -1259,7 +1259,7 @@
       }),
       h("div", { className: "df-principle" },
         h("strong", null, "Kryptonite adversarial gate — always on"),
-        h("p", null, "Every slice requires a fresh verifier and adversary review. The builder cannot disable or self-approve this gate.")
+        h("p", null, "Every functional block is completed with focused evidence; verifier, adversary, and holdout review run at the milestone delivery gate.")
       ),
       h("div", { className: "df-two-grid" },
         h(SelectField, {
@@ -1450,7 +1450,7 @@
         h("div", { className: "df-subsection-title" },
           h("div", null,
             h("h3", null, "Execution graph backend"),
-            h("p", null, "Mission → milestone epics → functional-slice tasks. No micro-beads for test fixes or review comments.")
+            h("p", null, "Mission → milestone epics → complete functional-block tasks. Thin slices, test fixes, and review comments stay inside the block.")
           )
         ),
         h("div", { className: "df-principle" },
